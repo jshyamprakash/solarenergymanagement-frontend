@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Solar Energy Monitoring System - Frontend
 
 React-based frontend application for the Solar Energy Monitoring System.
@@ -152,3 +153,6 @@ npm run preview
 ## 📄 License
 
 ISC
+=======
+# solarenergymanagement-frontend
+>>>>>>> ed49f7f18a5d6a940c70ced77966ed8d82ef2a05
