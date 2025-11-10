@@ -90,6 +90,10 @@ const initialState = {
     total: 0,
     totalPages: 0,
   },
+  filters: {
+    status: '',
+    search: '',
+  },
   loading: false,
   error: null,
 };
@@ -105,6 +109,12 @@ const plantSlice = createSlice({
     clearCurrentPlant: (state) => {
       state.currentPlant = null;
       state.currentPlantStats = null;
+    },
+    setFilters: (state, action) => {
+      state.filters = { ...state.filters, ...action.payload };
+    },
+    setPagination: (state, action) => {
+      state.pagination = { ...state.pagination, ...action.payload };
     },
   },
   extraReducers: (builder) => {
@@ -207,11 +217,12 @@ export const selectPlants = (state) => state.plants.plants;
 export const selectCurrentPlant = (state) => state.plants.currentPlant;
 export const selectCurrentPlantStats = (state) => state.plants.currentPlantStats;
 export const selectPlantsPagination = (state) => state.plants.pagination;
+export const selectPlantsFilters = (state) => state.plants.filters;
 export const selectPlantsLoading = (state) => state.plants.loading;
 export const selectPlantsError = (state) => state.plants.error;
 
 // Actions
-export const { clearError, clearCurrentPlant } = plantSlice.actions;
+export const { clearError, clearCurrentPlant, setFilters, setPagination } = plantSlice.actions;
 
 // Reducer
 export default plantSlice.reducer;

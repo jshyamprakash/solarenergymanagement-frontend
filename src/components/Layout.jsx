@@ -18,20 +18,26 @@ import {
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
+  Map as MapIcon,
   Factory as PlantIcon,
   DeviceHub as DeviceIcon,
   Warning as AlarmIcon,
   Assessment as ReportIcon,
+  People as PeopleIcon,
   Logout as LogoutIcon,
   LightMode as SunIcon,
+  // AUDIT LOG - COMMENTED OUT (Enable when needed)
+  // History as HistoryIcon,
+  Settings as MastersIcon,
 } from '@mui/icons-material';
-import { logout as logoutAction, selectUser } from '../store/slices/authSlice';
+import { logout as logoutAction, selectUser, selectIsAdmin } from '../store/slices/authSlice';
 
 const Layout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch();
   const user = useSelector(selectUser);
+  const isAdmin = useSelector(selectIsAdmin);
 
   const handleLogout = async () => {
     await dispatch(logoutAction());
@@ -41,10 +47,15 @@ const Layout = () => {
   // Determine active tab based on current path
   const getActiveTab = () => {
     const path = location.pathname;
+    if (path.startsWith('/map')) return '/map';
     if (path.startsWith('/plants')) return '/plants';
     if (path.startsWith('/devices')) return '/devices';
+    if (path.startsWith('/masters')) return '/masters';
     if (path.startsWith('/alarms')) return '/alarms';
     if (path.startsWith('/reports')) return '/reports';
+    // AUDIT LOG - COMMENTED OUT (Enable when needed)
+    // if (path.startsWith('/audit')) return '/audit';
+    if (path.startsWith('/users')) return '/users';
     return '/dashboard';
   };
 
@@ -77,6 +88,13 @@ const Layout = () => {
               sx={{ minHeight: 64 }}
             />
             <Tab
+              icon={<MapIcon />}
+              iconPosition="start"
+              label="Map"
+              value="/map"
+              sx={{ minHeight: 64 }}
+            />
+            <Tab
               icon={<PlantIcon />}
               iconPosition="start"
               label="Plants"
@@ -88,6 +106,13 @@ const Layout = () => {
               iconPosition="start"
               label="Devices"
               value="/devices"
+              sx={{ minHeight: 64 }}
+            />
+            <Tab
+              icon={<MastersIcon />}
+              iconPosition="start"
+              label="Masters"
+              value="/masters"
               sx={{ minHeight: 64 }}
             />
             <Tab
@@ -104,6 +129,25 @@ const Layout = () => {
               value="/reports"
               sx={{ minHeight: 64 }}
             />
+            {/* AUDIT LOG - COMMENTED OUT (Enable when needed) */}
+            {/* {isAdmin && (
+              <Tab
+                icon={<HistoryIcon />}
+                iconPosition="start"
+                label="Audit Log"
+                value="/audit"
+                sx={{ minHeight: 64 }}
+              />
+            )} */}
+            {isAdmin && (
+              <Tab
+                icon={<PeopleIcon />}
+                iconPosition="start"
+                label="Users"
+                value="/users"
+                sx={{ minHeight: 64 }}
+              />
+            )}
           </Tabs>
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>

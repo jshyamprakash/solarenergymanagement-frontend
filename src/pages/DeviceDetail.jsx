@@ -1,10 +1,12 @@
 /**
  * Device Detail Page
  * Displays detailed information about a specific device
+ * Refactored to use Redux for state management
  */
 
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
 import {
   Box,
   Paper,
@@ -29,10 +31,18 @@ import {
   CalendarToday as CalendarIcon,
   Settings as SettingsIcon,
 } from '@mui/icons-material';
-import { getDeviceById, getDeviceChildren } from '../services/deviceService';
-import { generateMockTimeSeriesData } from '../services/dataService';
-import { useSelector } from 'react-redux';
+import {
+  fetchDeviceById,
+  fetchDeviceChildren,
+  selectCurrentDevice,
+  selectDeviceChildren,
+  selectDevicesLoading,
+  selectDevicesError,
+  clearError,
+  clearCurrentDevice,
+} from '../store/slices/deviceSlice';
 import { selectIsAdmin, selectIsPlantManager } from '../store/slices/authSlice';
+import { generateMockTimeSeriesData } from '../services/dataService';
 import LineChartComponent from '../components/charts/LineChartComponent';
 import BarChartComponent from '../components/charts/BarChartComponent';
 
@@ -46,18 +56,25 @@ const STATUS_COLORS = {
 const DeviceDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+
+  // Redux selectors
   const isAdmin = useSelector(selectIsAdmin);
   const isPlantManager = useSelector(selectIsPlantManager);
+  const device = useSelector(selectCurrentDevice);
+  const children = useSelector(selectDeviceChildren);
+  const loading = useSelector(selectDevicesLoading);
+  const error = useSelector(selectDevicesError);
 
-  const [device, setDevice] = useState(null);
-  const [children, setChildren] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  // Local state for chart data (UI-specific)
   const [performanceData, setPerformanceData] = useState([]);
   const [temperatureData, setTemperatureData] = useState([]);
 
   useEffect(() => {
-    loadDevice();
+    // Fetch device data and children
+    dispatch(fetchDeviceById(id));
+    dispatch(fetchDeviceChildren(id));
+
     // Generate mock performance data for charts
     setPerformanceData(generateMockTimeSeriesData(24));
     // Generate temperature and voltage data
@@ -67,27 +84,12 @@ const DeviceDetail = () => {
       voltage: item.voltage,
     }));
     setTemperatureData(tempData);
-  }, [id]);
 
-  const loadDevice = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const [deviceData, childrenData] = await Promise.all([
-        getDeviceById(id),
-        getDeviceChildren(id).catch(() => []),
-      ]);
-
-      setDevice(deviceData);
-      setChildren(childrenData || []);
-    } catch (err) {
-      console.error('Error loading device:', err);
-      setError(err.response?.data?.message || 'Failed to load device');
-    } finally {
-      setLoading(false);
-    }
-  };
+    // Cleanup on unmount
+    return () => {
+      dispatch(clearCurrentDevice());
+    };
+  }, [id, dispatch]);
 
   if (loading) {
     return (
@@ -100,7 +102,9 @@ const DeviceDetail = () => {
   if (error) {
     return (
       <Box sx={{ p: 3 }}>
-        <Alert severity="error">{error}</Alert>
+        <Alert severity="error" onClose={() => dispatch(clearError())}>
+          {error}
+        </Alert>
         <Button
           startIcon={<BackIcon />}
           onClick={() => navigate('/devices')}

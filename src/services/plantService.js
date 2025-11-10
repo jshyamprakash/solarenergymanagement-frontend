@@ -16,8 +16,10 @@ export const getAllPlants = async (params = {}) => {
 /**
  * Get plant by ID
  */
-export const getPlantById = async (plantId) => {
-  const response = await api.get(`/plants/${plantId}`);
+export const getPlantById = async (plantId, includeDevices = false) => {
+  const response = await api.get(`/plants/${plantId}`, {
+    params: { includeDevices },
+  });
   return response.data.data.plant;
 };
 

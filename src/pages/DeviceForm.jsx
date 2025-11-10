@@ -1,10 +1,12 @@
 /**
  * Device Form Page
  * Create or edit a device
+ * Refactored to use Redux for state management
  */
 
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
 import {
   Box,
   Paper,
@@ -22,12 +24,21 @@ import {
   DevicesOther as DeviceIcon,
 } from '@mui/icons-material';
 import {
-  getDeviceById,
-  createDevice,
-  updateDevice,
-} from '../services/deviceService';
-import { getAllPlants } from '../services/plantService';
-import { getAllDevices } from '../services/deviceService';
+  fetchDeviceById,
+  fetchDevices,
+  createDevice as createDeviceAction,
+  updateDevice as updateDeviceAction,
+  selectCurrentDevice,
+  selectDevices,
+  selectDevicesLoading,
+  selectDevicesError,
+  clearError,
+  clearCurrentDevice,
+} from '../store/slices/deviceSlice';
+import {
+  fetchPlants,
+  selectPlants,
+} from '../store/slices/plantSlice';
 
 const DEVICE_TYPES = [
   'INVERTER',
@@ -45,8 +56,17 @@ const DEVICE_STATUS = ['ONLINE', 'OFFLINE', 'MAINTENANCE', 'ERROR'];
 const DeviceForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const isEditMode = Boolean(id);
 
+  // Redux selectors
+  const device = useSelector(selectCurrentDevice);
+  const plants = useSelector(selectPlants);
+  const availableParentDevices = useSelector(selectDevices);
+  const loading = useSelector(selectDevicesLoading);
+  const reduxError = useSelector(selectDevicesError);
+
+  // Local form state (acceptable for forms)
   const [formData, setFormData] = useState({
     plantId: '',
     name: '',
@@ -59,67 +79,53 @@ const DeviceForm = () => {
     installationDate: '',
   });
 
-  const [plants, setPlants] = useState([]);
-  const [availableParentDevices, setAvailableParentDevices] = useState([]);
-  const [loading, setLoading] = useState(isEditMode);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
+  // Load plants and device (if editing) on mount
   useEffect(() => {
-    loadFormData();
-  }, [id]);
+    dispatch(fetchPlants({ page: 1, limit: 1000 }));
 
+    if (isEditMode) {
+      dispatch(fetchDeviceById(id));
+    }
+
+    // Cleanup on unmount
+    return () => {
+      dispatch(clearCurrentDevice());
+    };
+  }, [id, isEditMode, dispatch]);
+
+  // Populate form when device data is loaded from Redux
+  useEffect(() => {
+    if (device && isEditMode) {
+      setFormData({
+        plantId: device.plantId || '',
+        name: device.name || '',
+        deviceType: device.deviceType || 'INVERTER',
+        manufacturer: device.manufacturer || '',
+        model: device.model || '',
+        serialNumber: device.serialNumber || '',
+        status: device.status || 'ONLINE',
+        parentDeviceId: device.parentDeviceId || '',
+        installationDate: device.installationDate
+          ? new Date(device.installationDate).toISOString().split('T')[0]
+          : '',
+      });
+    }
+  }, [device, isEditMode]);
+
+  // Load parent devices when plantId changes
   useEffect(() => {
     if (formData.plantId) {
-      loadParentDevices(formData.plantId);
+      dispatch(fetchDevices({ plantId: formData.plantId, limit: 100 }));
     }
-  }, [formData.plantId]);
+  }, [formData.plantId, dispatch]);
 
-  const loadFormData = async () => {
-    try {
-      setLoading(true);
-
-      // Load plants
-      const plantsData = await getAllPlants();
-      setPlants(plantsData.plants || []);
-
-      // Load device data if editing
-      if (isEditMode) {
-        const device = await getDeviceById(id);
-        setFormData({
-          plantId: device.plantId || '',
-          name: device.name || '',
-          deviceType: device.deviceType || 'INVERTER',
-          manufacturer: device.manufacturer || '',
-          model: device.model || '',
-          serialNumber: device.serialNumber || '',
-          status: device.status || 'ONLINE',
-          parentDeviceId: device.parentDeviceId || '',
-          installationDate: device.installationDate
-            ? new Date(device.installationDate).toISOString().split('T')[0]
-            : '',
-        });
-      }
-    } catch (err) {
-      console.error('Error loading form data:', err);
-      setError(err.response?.data?.message || 'Failed to load data');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadParentDevices = async (plantId) => {
-    try {
-      const devicesData = await getAllDevices({ plantId, limit: 100 });
-      // Filter out the current device if editing
-      const devices = (devicesData.data || []).filter(
-        (device) => device.id !== id
-      );
-      setAvailableParentDevices(devices);
-    } catch (err) {
-      console.error('Error loading parent devices:', err);
-    }
-  };
+  // Filter out current device from parent options if editing
+  const filteredParentDevices = isEditMode
+    ? availableParentDevices.filter((device) => device.id !== id)
+    : availableParentDevices;
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -147,16 +153,17 @@ const DeviceForm = () => {
         installationDate: formData.installationDate || undefined,
       };
 
+      // Use Redux actions to create/update device
       if (isEditMode) {
-        await updateDevice(id, payload);
+        await dispatch(updateDeviceAction({ id, deviceData: payload })).unwrap();
       } else {
-        await createDevice(payload);
+        await dispatch(createDeviceAction(payload)).unwrap();
       }
 
       navigate('/devices');
     } catch (err) {
       console.error('Error saving device:', err);
-      setError(err.response?.data?.message || 'Failed to save device');
+      setError(err || 'Failed to save device');
     } finally {
       setSubmitting(false);
     }
@@ -186,9 +193,16 @@ const DeviceForm = () => {
         </Typography>
       </Box>
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
-          {error}
+      {(error || reduxError) && (
+        <Alert
+          severity="error"
+          sx={{ mb: 3 }}
+          onClose={() => {
+            setError(null);
+            dispatch(clearError());
+          }}
+        >
+          {error || reduxError}
         </Alert>
       )}
 
@@ -324,7 +338,7 @@ const DeviceForm = () => {
                 disabled={!formData.plantId}
               >
                 <MenuItem value="">None</MenuItem>
-                {availableParentDevices.map((device) => (
+                {filteredParentDevices.map((device) => (
                   <MenuItem key={device.id} value={device.id}>
                     {device.name} ({device.deviceType.replace('_', ' ')})
                   </MenuItem>

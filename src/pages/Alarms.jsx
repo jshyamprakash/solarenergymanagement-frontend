@@ -1,9 +1,11 @@
 /**
  * Alarms Page
  * Displays and manages system alarms
+ * Refactored to use Redux for state management
  */
 
 import { useState, useEffect } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import {
   Box,
   Card,
@@ -42,9 +44,22 @@ import {
   Refresh as RefreshIcon,
   FilterList as FilterIcon,
 } from '@mui/icons-material';
-import { useSelector } from 'react-redux';
+import {
+  fetchAlarms,
+  fetchAlarmStatistics,
+  acknowledgeAlarm,
+  resolveAlarm,
+  selectAlarms,
+  selectAlarmStatistics,
+  selectAlarmsPagination,
+  selectAlarmsFilters,
+  selectAlarmsLoading,
+  selectAlarmsError,
+  setFilters,
+  setPagination,
+  clearError,
+} from '../store/slices/alarmsSlice';
 import { selectIsAdmin, selectIsPlantManager } from '../store/slices/authSlice';
-import * as alarmService from '../services/alarmService';
 
 // Severity colors
 const SEVERITY_COLORS = {
@@ -73,90 +88,67 @@ const STATUS_COLORS = {
 };
 
 const Alarms = () => {
+  const dispatch = useDispatch();
+
+  // Redux selectors
   const isAdmin = useSelector(selectIsAdmin);
   const isPlantManager = useSelector(selectIsPlantManager);
+  const alarms = useSelector(selectAlarms);
+  const statistics = useSelector(selectAlarmStatistics);
+  const pagination = useSelector(selectAlarmsPagination);
+  const filters = useSelector(selectAlarmsFilters);
+  const loading = useSelector(selectAlarmsLoading);
+  const error = useSelector(selectAlarmsError);
+
   const canManage = isAdmin || isPlantManager;
 
-  const [alarms, setAlarms] = useState([]);
-  const [statistics, setStatistics] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  // Pagination
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [totalAlarms, setTotalAlarms] = useState(0);
-
-  // Filters
-  const [filters, setFilters] = useState({
-    severity: '',
-    status: '',
-    plantId: '',
-  });
-
-  // Dialog states
+  // Local state for dialogs only
   const [acknowledgeDialog, setAcknowledgeDialog] = useState({ open: false, alarm: null });
   const [resolveDialog, setResolveDialog] = useState({ open: false, alarm: null });
   const [note, setNote] = useState('');
 
+  // Load alarms and statistics when component mounts or filters/pagination change
   useEffect(() => {
     loadAlarms();
     loadStatistics();
-  }, [page, rowsPerPage, filters]);
+  }, [pagination.page, pagination.limit, filters.severity, filters.status, filters.plantId]);
 
-  const loadAlarms = async () => {
-    try {
-      setLoading(true);
-      setError('');
+  const loadAlarms = () => {
+    const params = {
+      page: pagination.page,
+      limit: pagination.limit,
+      ...Object.fromEntries(
+        Object.entries(filters).filter(([_, value]) => value !== '')
+      ),
+    };
 
-      const params = {
-        page: page + 1,
-        limit: rowsPerPage,
-        ...Object.fromEntries(
-          Object.entries(filters).filter(([_, value]) => value !== '')
-        ),
-      };
-
-      const response = await alarmService.getAllAlarms(params);
-      setAlarms(response || []);
-
-      // Note: Backend should return pagination info
-      // For now, estimate total based on response
-      setTotalAlarms(response.length < rowsPerPage ? page * rowsPerPage + response.length : (page + 1) * rowsPerPage + 1);
-    } catch (err) {
-      console.error('Error loading alarms:', err);
-      setError(err.response?.data?.message || 'Failed to load alarms');
-    } finally {
-      setLoading(false);
-    }
+    dispatch(fetchAlarms(params));
   };
 
-  const loadStatistics = async () => {
-    try {
-      const stats = await alarmService.getAlarmStatistics();
-      setStatistics(stats);
-    } catch (err) {
-      console.error('Error loading statistics:', err);
-    }
+  const loadStatistics = () => {
+    dispatch(fetchAlarmStatistics());
   };
 
   const handleRefresh = () => {
+    dispatch(clearError());
     loadAlarms();
     loadStatistics();
   };
 
-  const handleChangePage = (event, newPage) => {
-    setPage(newPage);
+  const handleChangePage = (_event, newPage) => {
+    dispatch(setPagination({ page: newPage + 1 }));
   };
 
   const handleChangeRowsPerPage = (event) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
+    dispatch(setPagination({
+      limit: parseInt(event.target.value, 10),
+      page: 1
+    }));
   };
 
   const handleFilterChange = (field, value) => {
-    setFilters(prev => ({ ...prev, [field]: value }));
-    setPage(0);
+    dispatch(setFilters({ [field]: value }));
+    dispatch(setPagination({ page: 1 }));
   };
 
   const handleAcknowledge = (alarm) => {
@@ -171,37 +163,37 @@ const Alarms = () => {
 
   const confirmAcknowledge = async () => {
     try {
-      await alarmService.acknowledgeAlarm(acknowledgeDialog.alarm.id, { note });
+      await dispatch(acknowledgeAlarm({
+        id: acknowledgeDialog.alarm.id,
+        acknowledgedBy: 'current-user', // Should be taken from auth context
+        notes: note
+      })).unwrap();
+
       setAcknowledgeDialog({ open: false, alarm: null });
       setNote('');
       loadAlarms();
       loadStatistics();
     } catch (err) {
-      console.error('Error acknowledging alarm:', err);
-      setError(err.response?.data?.message || 'Failed to acknowledge alarm');
+      // Error is handled by Redux
     }
   };
 
   const confirmResolve = async () => {
     try {
-      await alarmService.resolveAlarm(resolveDialog.alarm.id, { note });
+      await dispatch(resolveAlarm({
+        id: resolveDialog.alarm.id,
+        resolvedBy: 'current-user', // Should be taken from auth context
+        resolution: note
+      })).unwrap();
+
       setResolveDialog({ open: false, alarm: null });
       setNote('');
       loadAlarms();
       loadStatistics();
     } catch (err) {
-      console.error('Error resolving alarm:', err);
-      setError(err.response?.data?.message || 'Failed to resolve alarm');
+      // Error is handled by Redux
     }
   };
-
-  if (loading && !alarms.length) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
 
   return (
     <Box>
@@ -221,7 +213,7 @@ const Alarms = () => {
       </Box>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError('')}>
+        <Alert severity="error" sx={{ mb: 3 }} onClose={() => dispatch(clearError())}>
           {error}
         </Alert>
       )}
@@ -428,9 +420,9 @@ const Alarms = () => {
         <TablePagination
           rowsPerPageOptions={[5, 10, 25, 50]}
           component="div"
-          count={totalAlarms}
-          rowsPerPage={rowsPerPage}
-          page={page}
+          count={pagination.total}
+          rowsPerPage={pagination.limit}
+          page={pagination.page - 1}
           onPageChange={handleChangePage}
           onRowsPerPageChange={handleChangeRowsPerPage}
         />

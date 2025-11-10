@@ -103,6 +103,12 @@ const initialState = {
     total: 0,
     totalPages: 0,
   },
+  filters: {
+    plantId: '',
+    deviceType: '',
+    status: '',
+    search: '',
+  },
   loading: false,
   error: null,
 };
@@ -121,6 +127,12 @@ const deviceSlice = createSlice({
     },
     clearDeviceHierarchy: (state) => {
       state.deviceHierarchy = [];
+    },
+    setFilters: (state, action) => {
+      state.filters = { ...state.filters, ...action.payload };
+    },
+    setPagination: (state, action) => {
+      state.pagination = { ...state.pagination, ...action.payload };
     },
   },
   extraReducers: (builder) => {
@@ -238,11 +250,12 @@ export const selectCurrentDevice = (state) => state.devices.currentDevice;
 export const selectDeviceChildren = (state) => state.devices.deviceChildren;
 export const selectDeviceHierarchy = (state) => state.devices.deviceHierarchy;
 export const selectDevicesPagination = (state) => state.devices.pagination;
+export const selectDevicesFilters = (state) => state.devices.filters;
 export const selectDevicesLoading = (state) => state.devices.loading;
 export const selectDevicesError = (state) => state.devices.error;
 
 // Actions
-export const { clearError, clearCurrentDevice, clearDeviceHierarchy } = deviceSlice.actions;
+export const { clearError, clearCurrentDevice, clearDeviceHierarchy, setFilters, setPagination } = deviceSlice.actions;
 
 // Reducer
 export default deviceSlice.reducer;

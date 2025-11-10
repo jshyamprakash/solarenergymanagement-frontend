@@ -1,10 +1,12 @@
 /**
  * Plant Detail Page
  * View detailed information about a specific plant
+ * Refactored to use Redux for state management
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
 import {
   Box,
   Button,
@@ -26,10 +28,18 @@ import {
   DeviceHub as DeviceIcon,
   Warning as WarningIcon,
 } from '@mui/icons-material';
-import { getPlantById, getPlantStats } from '../services/plantService';
-import { generateMockTimeSeriesData, generateMockEnergySummary } from '../services/dataService';
-import { useSelector } from 'react-redux';
+import {
+  fetchPlantById,
+  fetchPlantStats,
+  selectCurrentPlant,
+  selectCurrentPlantStats,
+  selectPlantsLoading,
+  selectPlantsError,
+  clearError,
+  clearCurrentPlant,
+} from '../store/slices/plantSlice';
 import { selectIsAdmin, selectIsPlantManager } from '../store/slices/authSlice';
+import { generateMockTimeSeriesData, generateMockEnergySummary } from '../services/dataService';
 import LineChartComponent from '../components/charts/LineChartComponent';
 import BarChartComponent from '../components/charts/BarChartComponent';
 
@@ -70,41 +80,34 @@ const StatCard = ({ icon, title, value, color = 'primary' }) => (
 const PlantDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+
+  // Redux selectors
   const isAdmin = useSelector(selectIsAdmin);
   const isPlantManager = useSelector(selectIsPlantManager);
+  const plant = useSelector(selectCurrentPlant);
+  const stats = useSelector(selectCurrentPlantStats);
+  const loading = useSelector(selectPlantsLoading);
+  const error = useSelector(selectPlantsError);
 
-  const [plant, setPlant] = useState(null);
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  // Local state for chart data (UI-specific)
   const [powerData, setPowerData] = useState([]);
   const [energySummary, setEnergySummary] = useState([]);
 
   useEffect(() => {
-    loadPlantData();
+    // Fetch plant data and stats
+    dispatch(fetchPlantById(id));
+    dispatch(fetchPlantStats(id));
+
     // Generate mock chart data
     setPowerData(generateMockTimeSeriesData(24));
-    setEnergySummary(generateMockEnergySummary(30)); // Last 30 days
-  }, [id]);
+    setEnergySummary(generateMockEnergySummary(30));
 
-  const loadPlantData = async () => {
-    try {
-      setLoading(true);
-      setError('');
-
-      const [plantData, statsData] = await Promise.all([
-        getPlantById(id),
-        getPlantStats(id),
-      ]);
-
-      setPlant(plantData);
-      setStats(statsData);
-    } catch (err) {
-      setError(err.message || 'Failed to load plant data');
-    } finally {
-      setLoading(false);
-    }
-  };
+    // Cleanup on unmount
+    return () => {
+      dispatch(clearCurrentPlant());
+    };
+  }, [id, dispatch]);
 
   if (loading) {
     return (
@@ -115,7 +118,11 @@ const PlantDetail = () => {
   }
 
   if (error) {
-    return <Alert severity="error">{error}</Alert>;
+    return (
+      <Alert severity="error" onClose={() => dispatch(clearError())}>
+        {error}
+      </Alert>
+    );
   }
 
   if (!plant) {
@@ -217,7 +224,7 @@ const PlantDetail = () => {
                 value={plant.installationDate ? new Date(plant.installationDate).toLocaleDateString() : 'N/A'}
               />
               <InfoRow label="Timezone" value={plant.timezone || 'UTC'} />
-              <InfoRow label="Owner" value={plant.owner?.name || 'N/A'} />
+              <InfoRow label="Owner" value={plant.createdBy?.name || 'N/A'} />
               <InfoRow
                 label="Created"
                 value={new Date(plant.createdAt).toLocaleDateString()}
@@ -245,7 +252,7 @@ const PlantDetail = () => {
               <InfoRow label="Longitude" value={plant.location?.lng || 'N/A'} />
               <InfoRow label="Coordinates" value={plant.coordinates || 'N/A'} />
 
-              {/* Map placeholder - will be replaced with actual map */}
+              {/* Map placeholder */}
               <Box
                 sx={{
                   mt: 2,

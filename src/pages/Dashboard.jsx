@@ -1,9 +1,11 @@
 /**
  * Dashboard Page
  * Main dashboard with overview statistics
+ * Refactored to use Redux for state management
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import {
   Grid,
   Card,
@@ -19,9 +21,14 @@ import {
   Warning as AlarmIcon,
   Bolt as EnergyIcon,
 } from '@mui/icons-material';
-import { useSelector } from 'react-redux';
 import { selectUser } from '../store/slices/authSlice';
-import { getAllPlants } from '../services/plantService';
+import {
+  fetchPlants,
+  selectPlants,
+  selectPlantsLoading,
+  selectPlantsError,
+  clearError,
+} from '../store/slices/plantSlice';
 import { generateMockTimeSeriesData, generateMockEnergySummary } from '../services/dataService';
 import LineChartComponent from '../components/charts/LineChartComponent';
 import BarChartComponent from '../components/charts/BarChartComponent';
@@ -54,31 +61,26 @@ const StatCard = ({ title, value, icon, color }) => (
 );
 
 const Dashboard = () => {
+  const dispatch = useDispatch();
+
+  // Redux selectors
   const user = useSelector(selectUser);
-  const [plants, setPlants] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const plants = useSelector(selectPlants);
+  const loading = useSelector(selectPlantsLoading);
+  const error = useSelector(selectPlantsError);
+
+  // Local state for chart data (UI-specific)
   const [timeSeriesData, setTimeSeriesData] = useState([]);
   const [energySummaryData, setEnergySummaryData] = useState([]);
 
   useEffect(() => {
-    loadDashboardData();
+    // Fetch plants data
+    dispatch(fetchPlants({}));
+
     // Generate mock data for charts
     setTimeSeriesData(generateMockTimeSeriesData(24));
     setEnergySummaryData(generateMockEnergySummary(7));
-  }, []);
-
-  const loadDashboardData = async () => {
-    try {
-      setLoading(true);
-      const data = await getAllPlants();
-      setPlants(data.plants || []);
-    } catch (err) {
-      setError(err.message || 'Failed to load dashboard data');
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [dispatch]);
 
   if (loading) {
     return (
@@ -89,7 +91,11 @@ const Dashboard = () => {
   }
 
   if (error) {
-    return <Alert severity="error">{error}</Alert>;
+    return (
+      <Alert severity="error" onClose={() => dispatch(clearError())}>
+        {error}
+      </Alert>
+    );
   }
 
   // Calculate statistics
@@ -148,62 +154,76 @@ const Dashboard = () => {
 
       {/* Real-time Data Visualization */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} lg={8}>
-          <LineChartComponent
-            data={timeSeriesData}
-            title="Power Generation - Last 24 Hours"
-            xDataKey="time"
-            lines={[
-              { dataKey: 'activePower', name: 'Active Power (kW)', color: '#f59e0b' },
-              { dataKey: 'energy', name: 'Energy (kWh)', color: '#10b981' },
-            ]}
-            height={350}
-          />
+        <Grid item xs={12} md={8}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Power Generation (24 Hours)
+              </Typography>
+              <Box sx={{ height: 300 }}>
+                <LineChartComponent
+                  data={timeSeriesData}
+                  dataKey="value"
+                  xAxisKey="time"
+                  color="#1976d2"
+                />
+              </Box>
+            </CardContent>
+          </Card>
         </Grid>
-        <Grid item xs={12} lg={4}>
-          <BarChartComponent
-            data={energySummaryData}
-            title="Daily Energy Production"
-            xDataKey="label"
-            bars={[
-              { dataKey: 'energy', name: 'Energy (kWh)', color: '#f59e0b' },
-            ]}
-            height={350}
-          />
+        <Grid item xs={12} md={4}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Energy Summary (7 Days)
+              </Typography>
+              <Box sx={{ height: 300 }}>
+                <BarChartComponent
+                  data={energySummaryData}
+                  dataKey="energy"
+                  xAxisKey="day"
+                  color="#2e7d32"
+                />
+              </Box>
+            </CardContent>
+          </Card>
         </Grid>
       </Grid>
 
-      {/* Plants Overview */}
+      {/* Plant List */}
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            Your Solar Plants
+            Your Plants
           </Typography>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            {plants.map((plant) => (
-              <Grid item xs={12} md={6} key={plant.id}>
-                <Card variant="outlined">
-                  <CardContent>
-                    <Typography variant="h6">{plant.name}</Typography>
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
-                      {plant.location?.address || 'No address'}
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
-                      <Typography variant="caption">
+          {plants.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              No plants found
+            </Typography>
+          ) : (
+            <Grid container spacing={2}>
+              {plants.map((plant) => (
+                <Grid item xs={12} sm={6} md={4} key={plant.id}>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        {plant.name}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
                         Capacity: {(plant.capacity / 1000).toFixed(1)} MW
                       </Typography>
-                      <Typography variant="caption">
-                        Status: {plant.status}
-                      </Typography>
-                      <Typography variant="caption">
+                      <Typography variant="body2" color="text.secondary">
                         Devices: {plant._count?.devices || 0}
                       </Typography>
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
+                      <Typography variant="body2" color="text.secondary">
+                        Alarms: {plant._count?.alarms || 0}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          )}
         </CardContent>
       </Card>
     </Box>

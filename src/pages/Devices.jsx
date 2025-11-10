@@ -1,10 +1,12 @@
 /**
  * Devices List Page
  * Displays all devices with table, filters, and pagination
+ * Refactored to use Redux for state management
  */
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
 import {
   Box,
   Paper,
@@ -31,10 +33,24 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   DevicesOther as DeviceIcon,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
-import { getAllDevices, deleteDevice } from '../services/deviceService';
-import { getAllPlants } from '../services/plantService';
-import { useSelector } from 'react-redux';
+import {
+  fetchDevices,
+  deleteDevice,
+  selectDevices,
+  selectDevicesPagination,
+  selectDevicesFilters,
+  selectDevicesLoading,
+  selectDevicesError,
+  setFilters,
+  setPagination,
+  clearError,
+} from '../store/slices/deviceSlice';
+import {
+  fetchPlants,
+  selectPlants,
+} from '../store/slices/plantSlice';
 import { selectIsAdmin, selectIsPlantManager } from '../store/slices/authSlice';
 
 const DEVICE_TYPES = [
@@ -59,65 +75,74 @@ const STATUS_COLORS = {
 
 const Devices = () => {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+
+  // Redux selectors
   const isAdmin = useSelector(selectIsAdmin);
   const isPlantManager = useSelector(selectIsPlantManager);
+  const devices = useSelector(selectDevices);
+  const plants = useSelector(selectPlants);
+  const pagination = useSelector(selectDevicesPagination);
+  const filters = useSelector(selectDevicesFilters);
+  const loading = useSelector(selectDevicesLoading);
+  const error = useSelector(selectDevicesError);
 
-  const [devices, setDevices] = useState([]);
-  const [plants, setPlants] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  // Pagination
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [total, setTotal] = useState(0);
-
-  // Filters
-  const [plantFilter, setPlantFilter] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-
-  // Load plants for filter
+  // Load plants for filter dropdown (on mount only)
   useEffect(() => {
-    const loadPlants = async () => {
-      try {
-        const data = await getAllPlants();
-        setPlants(data.plants || []);
-      } catch (err) {
-        console.error('Error loading plants:', err);
-      }
-    };
-    loadPlants();
+    dispatch(fetchPlants({ page: 1, limit: 1000 })); // Load all plants for filter
   }, []);
 
-  // Load devices
+  // Load devices when component mounts or filters/pagination change
   useEffect(() => {
     loadDevices();
-  }, [page, rowsPerPage, plantFilter, typeFilter, statusFilter]);
+  }, [pagination.page, pagination.limit, filters.plantId, filters.deviceType, filters.status]);
 
-  const loadDevices = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  const loadDevices = () => {
+    const params = {
+      page: pagination.page,
+      limit: pagination.limit,
+      ...(filters.plantId && { plantId: filters.plantId }),
+      ...(filters.deviceType && { deviceType: filters.deviceType }),
+      ...(filters.status && { status: filters.status }),
+    };
 
-      const params = {
-        page: page + 1,
-        limit: rowsPerPage,
-        ...(plantFilter && { plantId: plantFilter }),
-        ...(typeFilter && { deviceType: typeFilter }),
-        ...(statusFilter && { status: statusFilter }),
-      };
+    dispatch(fetchDevices(params));
+  };
 
-      const data = await getAllDevices(params);
-      setDevices(data.data || []);
-      setTotal(data.pagination?.total || 0);
-    } catch (err) {
-      console.error('Error loading devices:', err);
-      setError(err.response?.data?.message || 'Failed to load devices');
-    } finally {
-      setLoading(false);
-    }
+  const handleChangePage = (_event, newPage) => {
+    dispatch(setPagination({ page: newPage + 1 }));
+  };
+
+  const handleChangeRowsPerPage = (event) => {
+    dispatch(setPagination({
+      limit: parseInt(event.target.value, 10),
+      page: 1
+    }));
+  };
+
+  const handlePlantFilterChange = (event) => {
+    dispatch(setFilters({ plantId: event.target.value }));
+    dispatch(setPagination({ page: 1 }));
+  };
+
+  const handleTypeFilterChange = (event) => {
+    dispatch(setFilters({ deviceType: event.target.value }));
+    dispatch(setPagination({ page: 1 }));
+  };
+
+  const handleStatusFilterChange = (event) => {
+    dispatch(setFilters({ status: event.target.value }));
+    dispatch(setPagination({ page: 1 }));
+  };
+
+  const handleResetFilters = () => {
+    dispatch(setFilters({ plantId: '', deviceType: '', status: '', search: '' }));
+    dispatch(setPagination({ page: 1 }));
+  };
+
+  const handleRefresh = () => {
+    dispatch(clearError());
+    loadDevices();
   };
 
   const handleDelete = async (id) => {
@@ -126,64 +151,53 @@ const Devices = () => {
     }
 
     try {
-      await deleteDevice(id);
-      loadDevices();
+      await dispatch(deleteDevice(id)).unwrap();
+      loadDevices(); // Refresh the list
     } catch (err) {
-      console.error('Error deleting device:', err);
-      alert(err.response?.data?.message || 'Failed to delete device');
+      // Error is handled by Redux
     }
-  };
-
-  const handleChangePage = (event, newPage) => {
-    setPage(newPage);
-  };
-
-  const handleChangeRowsPerPage = (event) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
-  };
-
-  const handleResetFilters = () => {
-    setPlantFilter('');
-    setTypeFilter('');
-    setStatusFilter('');
-    setSearchQuery('');
-    setPage(0);
   };
 
   const getDeviceTypeIcon = (type) => {
     return <DeviceIcon fontSize="small" />;
   };
 
-  if (loading && devices.length === 0) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
-
   return (
     <Box sx={{ p: 3 }}>
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <DeviceIcon fontSize="large" />
-          Devices
-        </Typography>
-        {(isAdmin || isPlantManager) && (
+        <div>
+          <Typography variant="h4" component="h1" sx={{ display: 'flex', alignItems: 'center', gap: 1 }} gutterBottom>
+            <DeviceIcon fontSize="large" />
+            Devices
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Manage devices across all solar plants
+          </Typography>
+        </div>
+        <Box sx={{ display: 'flex', gap: 2 }}>
           <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => navigate('/devices/new')}
+            variant="outlined"
+            startIcon={<RefreshIcon />}
+            onClick={handleRefresh}
+            disabled={loading}
           >
-            Add Device
+            Refresh
           </Button>
-        )}
+          {(isAdmin || isPlantManager) && (
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => navigate('/devices/new')}
+            >
+              Add Device
+            </Button>
+          )}
+        </Box>
       </Box>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
+        <Alert severity="error" sx={{ mb: 3 }} onClose={() => dispatch(clearError())}>
           {error}
         </Alert>
       )}
@@ -196,8 +210,8 @@ const Devices = () => {
               select
               fullWidth
               label="Plant"
-              value={plantFilter}
-              onChange={(e) => setPlantFilter(e.target.value)}
+              value={filters.plantId}
+              onChange={handlePlantFilterChange}
               size="small"
             >
               <MenuItem value="">All Plants</MenuItem>
@@ -213,8 +227,8 @@ const Devices = () => {
               select
               fullWidth
               label="Device Type"
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
+              value={filters.deviceType}
+              onChange={handleTypeFilterChange}
               size="small"
             >
               <MenuItem value="">All Types</MenuItem>
@@ -230,8 +244,8 @@ const Devices = () => {
               select
               fullWidth
               label="Status"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              value={filters.status}
+              onChange={handleStatusFilterChange}
               size="small"
             >
               <MenuItem value="">All Statuses</MenuItem>
@@ -257,99 +271,107 @@ const Devices = () => {
 
       {/* Table */}
       <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell>Plant</TableCell>
-              <TableCell>Type</TableCell>
-              <TableCell>Manufacturer</TableCell>
-              <TableCell>Serial Number</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Last Communication</TableCell>
-              <TableCell align="right">Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {devices.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} align="center">
-                  <Typography color="text.secondary" sx={{ py: 3 }}>
-                    No devices found
-                  </Typography>
-                </TableCell>
-              </TableRow>
-            ) : (
-              devices.map((device) => (
-                <TableRow key={device.id} hover>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      {getDeviceTypeIcon(device.deviceType)}
-                      {device.name}
-                    </Box>
-                  </TableCell>
-                  <TableCell>{device.plant?.name || 'N/A'}</TableCell>
-                  <TableCell>{device.deviceType.replace('_', ' ')}</TableCell>
-                  <TableCell>{device.manufacturer || 'N/A'}</TableCell>
-                  <TableCell>{device.serialNumber || 'N/A'}</TableCell>
-                  <TableCell>
-                    <Chip
-                      label={device.status}
-                      color={STATUS_COLORS[device.status] || 'default'}
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    {device.lastCommunication
-                      ? new Date(device.lastCommunication).toLocaleString()
-                      : 'Never'}
-                  </TableCell>
-                  <TableCell align="right">
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      onClick={() => navigate(`/devices/${device.id}`)}
-                      title="View Details"
-                    >
-                      <ViewIcon />
-                    </IconButton>
-                    {(isAdmin || isPlantManager) && (
-                      <>
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Plant</TableCell>
+                  <TableCell>Type</TableCell>
+                  <TableCell>Manufacturer</TableCell>
+                  <TableCell>Serial Number</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Last Communication</TableCell>
+                  <TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {devices.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} align="center">
+                      <Typography color="text.secondary" sx={{ py: 3 }}>
+                        No devices found
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  devices.map((device) => (
+                    <TableRow key={device.id} hover>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          {getDeviceTypeIcon(device.deviceType)}
+                          {device.name}
+                        </Box>
+                      </TableCell>
+                      <TableCell>{device.plant?.name || 'N/A'}</TableCell>
+                      <TableCell>{device.deviceType.replace('_', ' ')}</TableCell>
+                      <TableCell>{device.manufacturer || 'N/A'}</TableCell>
+                      <TableCell>{device.serialNumber || 'N/A'}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={device.status}
+                          color={STATUS_COLORS[device.status] || 'default'}
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {device.lastCommunication
+                          ? new Date(device.lastCommunication).toLocaleString()
+                          : 'Never'}
+                      </TableCell>
+                      <TableCell align="right">
                         <IconButton
                           size="small"
                           color="primary"
-                          onClick={() => navigate(`/devices/${device.id}/edit`)}
-                          title="Edit"
+                          onClick={() => navigate(`/devices/${device.id}`)}
+                          title="View Details"
                         >
-                          <EditIcon />
+                          <ViewIcon />
                         </IconButton>
-                        {isAdmin && (
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => handleDelete(device.id)}
-                            title="Delete"
-                          >
-                            <DeleteIcon />
-                          </IconButton>
+                        {(isAdmin || isPlantManager) && (
+                          <>
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              onClick={() => navigate(`/devices/${device.id}/edit`)}
+                              title="Edit"
+                            >
+                              <EditIcon />
+                            </IconButton>
+                            {isAdmin && (
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => handleDelete(device.id)}
+                                title="Delete"
+                              >
+                                <DeleteIcon />
+                              </IconButton>
+                            )}
+                          </>
                         )}
-                      </>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-        <TablePagination
-          component="div"
-          count={total}
-          page={page}
-          onPageChange={handleChangePage}
-          rowsPerPage={rowsPerPage}
-          onRowsPerPageChange={handleChangeRowsPerPage}
-          rowsPerPageOptions={[5, 10, 25, 50]}
-        />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+            <TablePagination
+              rowsPerPageOptions={[5, 10, 25, 50]}
+              component="div"
+              count={pagination.total}
+              rowsPerPage={pagination.limit}
+              page={pagination.page - 1}
+              onPageChange={handleChangePage}
+              onRowsPerPageChange={handleChangeRowsPerPage}
+            />
+          </>
+        )}
       </TableContainer>
     </Box>
   );

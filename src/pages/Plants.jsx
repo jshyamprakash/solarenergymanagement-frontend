@@ -1,10 +1,12 @@
 /**
  * Plants List Page
  * View and manage all plants
+ * Refactored to use Redux for state management
  */
 
-import React, { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
 import {
   Box,
   Button,
@@ -33,8 +35,18 @@ import {
   Delete as DeleteIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
-import { getAllPlants, deletePlant } from '../services/plantService';
-import { useSelector } from 'react-redux';
+import {
+  fetchPlants,
+  deletePlant,
+  selectPlants,
+  selectPlantsPagination,
+  selectPlantsFilters,
+  selectPlantsLoading,
+  selectPlantsError,
+  setFilters,
+  setPagination,
+  clearError,
+} from '../store/slices/plantSlice';
 import { selectIsAdmin, selectIsPlantManager } from '../store/slices/authSlice';
 
 const statusColors = {
@@ -46,49 +58,53 @@ const statusColors = {
 
 const Plants = () => {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+
+  // Redux selectors
   const isAdmin = useSelector(selectIsAdmin);
   const isPlantManager = useSelector(selectIsPlantManager);
+  const plants = useSelector(selectPlants);
+  const pagination = useSelector(selectPlantsPagination);
+  const filters = useSelector(selectPlantsFilters);
+  const loading = useSelector(selectPlantsLoading);
+  const error = useSelector(selectPlantsError);
 
-  const [plants, setPlants] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [total, setTotal] = useState(0);
-  const [statusFilter, setStatusFilter] = useState('');
+  const canModify = isAdmin || isPlantManager;
 
+  // Load plants when component mounts or filters/pagination change
   useEffect(() => {
     loadPlants();
-  }, [page, rowsPerPage, statusFilter]);
+  }, [pagination.page, pagination.limit, filters.status]);
 
-  const loadPlants = async () => {
-    try {
-      setLoading(true);
-      setError('');
+  const loadPlants = () => {
+    const params = {
+      page: pagination.page,
+      limit: pagination.limit,
+      ...(filters.status && { status: filters.status }),
+    };
 
-      const params = {
-        page: page + 1, // API uses 1-based pagination
-        limit: rowsPerPage,
-        ...(statusFilter && { status: statusFilter }),
-      };
-
-      const data = await getAllPlants(params);
-      setPlants(data.plants || []);
-      setTotal(data.pagination?.total || 0);
-    } catch (err) {
-      setError(err.message || 'Failed to load plants');
-    } finally {
-      setLoading(false);
-    }
+    dispatch(fetchPlants(params));
   };
 
-  const handleChangePage = (event, newPage) => {
-    setPage(newPage);
+  const handleChangePage = (_event, newPage) => {
+    dispatch(setPagination({ page: newPage + 1 }));
   };
 
   const handleChangeRowsPerPage = (event) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
+    dispatch(setPagination({
+      limit: parseInt(event.target.value, 10),
+      page: 1
+    }));
+  };
+
+  const handleStatusFilterChange = (event) => {
+    dispatch(setFilters({ status: event.target.value }));
+    dispatch(setPagination({ page: 1 }));
+  };
+
+  const handleRefresh = () => {
+    dispatch(clearError());
+    loadPlants();
   };
 
   const handleDelete = async (plantId, plantName) => {
@@ -97,32 +113,34 @@ const Plants = () => {
     }
 
     try {
-      await deletePlant(plantId);
-      loadPlants();
+      await dispatch(deletePlant(plantId)).unwrap();
+      loadPlants(); // Refresh the list
     } catch (err) {
-      setError(err.message || 'Failed to delete plant');
+      // Error is handled by Redux
     }
   };
-
-  const canModify = isAdmin || isPlantManager;
-
-  if (loading && plants.length === 0) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
 
   return (
     <Box>
       {/* Header */}
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h4">Solar Plants</Typography>
+        <div>
+          <Typography variant="h4" gutterBottom>
+            Solar Plants
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Manage solar plants and their configurations
+          </Typography>
+        </div>
         <Box sx={{ display: 'flex', gap: 2 }}>
-          <IconButton onClick={loadPlants} disabled={loading}>
-            <RefreshIcon />
-          </IconButton>
+          <Button
+            variant="outlined"
+            startIcon={<RefreshIcon />}
+            onClick={handleRefresh}
+            disabled={loading}
+          >
+            Refresh
+          </Button>
           {canModify && (
             <Button
               variant="contained"
@@ -144,11 +162,8 @@ const Plants = () => {
                 fullWidth
                 select
                 label="Status"
-                value={statusFilter}
-                onChange={(e) => {
-                  setStatusFilter(e.target.value);
-                  setPage(0);
-                }}
+                value={filters.status}
+                onChange={handleStatusFilterChange}
                 size="small"
               >
                 <MenuItem value="">All Status</MenuItem>
@@ -164,114 +179,121 @@ const Plants = () => {
 
       {/* Error Alert */}
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => dispatch(clearError())}>
           {error}
         </Alert>
       )}
 
       {/* Plants Table */}
       <Card>
-        <TableContainer>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>Location</TableCell>
-                <TableCell>Capacity (MW)</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Devices</TableCell>
-                <TableCell>Alarms</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {plants.map((plant) => (
-                <TableRow key={plant.id} hover>
-                  <TableCell>
-                    <Typography variant="body2" fontWeight={500}>
-                      {plant.name}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2" color="text.secondary">
-                      {plant.location?.address || 'N/A'}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    {(plant.capacity / 1000).toFixed(1)} MW
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      label={plant.status}
-                      color={statusColors[plant.status]}
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell>{plant._count?.devices || 0}</TableCell>
-                  <TableCell>
-                    {plant._count?.alarms > 0 ? (
-                      <Chip
-                        label={plant._count.alarms}
-                        color="error"
-                        size="small"
-                      />
-                    ) : (
-                      '0'
-                    )}
-                  </TableCell>
-                  <TableCell align="right">
-                    <IconButton
-                      size="small"
-                      onClick={() => navigate(`/plants/${plant.id}`)}
-                      title="View details"
-                    >
-                      <ViewIcon fontSize="small" />
-                    </IconButton>
-                    {canModify && (
-                      <>
-                        <IconButton
-                          size="small"
-                          onClick={() => navigate(`/plants/${plant.id}/edit`)}
-                          title="Edit"
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                        {isAdmin && (
+        <CardContent>
+          {loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+              <CircularProgress />
+            </Box>
+          ) : plants.length === 0 ? (
+            <Box sx={{ py: 8, textAlign: 'center' }}>
+              <Typography variant="body1" color="text.secondary">
+                No plants found
+              </Typography>
+            </Box>
+          ) : (
+            <>
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Name</TableCell>
+                      <TableCell>Location</TableCell>
+                      <TableCell>Capacity (MW)</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Devices</TableCell>
+                      <TableCell>Alarms</TableCell>
+                      <TableCell align="right">Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {plants.map((plant) => (
+                      <TableRow key={plant.id} hover>
+                        <TableCell>
+                          <Typography variant="body2" fontWeight={500}>
+                            {plant.name}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2" color="text.secondary">
+                            {plant.location?.address || 'N/A'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          {(plant.capacity / 1000).toFixed(1)} MW
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={plant.status}
+                            color={statusColors[plant.status]}
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell>{plant._count?.devices || 0}</TableCell>
+                        <TableCell>
+                          {plant._count?.alarms > 0 ? (
+                            <Chip
+                              label={plant._count.alarms}
+                              color="error"
+                              size="small"
+                            />
+                          ) : (
+                            '0'
+                          )}
+                        </TableCell>
+                        <TableCell align="right">
                           <IconButton
                             size="small"
-                            color="error"
-                            onClick={() => handleDelete(plant.id, plant.name)}
-                            title="Delete"
+                            onClick={() => navigate(`/plants/${plant.id}`)}
+                            title="View details"
                           >
-                            <DeleteIcon fontSize="small" />
+                            <ViewIcon fontSize="small" />
                           </IconButton>
-                        )}
-                      </>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {plants.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 8 }}>
-                    <Typography color="text.secondary">
-                      No plants found
-                    </Typography>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-        <TablePagination
-          component="div"
-          count={total}
-          page={page}
-          onPageChange={handleChangePage}
-          rowsPerPage={rowsPerPage}
-          onRowsPerPageChange={handleChangeRowsPerPage}
-          rowsPerPageOptions={[5, 10, 25, 50]}
-        />
+                          {canModify && (
+                            <>
+                              <IconButton
+                                size="small"
+                                onClick={() => navigate(`/plants/${plant.id}/edit`)}
+                                title="Edit"
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                              {isAdmin && (
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  onClick={() => handleDelete(plant.id, plant.name)}
+                                  title="Delete"
+                                >
+                                  <DeleteIcon fontSize="small" />
+                                </IconButton>
+                              )}
+                            </>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+              <TablePagination
+                rowsPerPageOptions={[5, 10, 25, 50]}
+                component="div"
+                count={pagination.total}
+                rowsPerPage={pagination.limit}
+                page={pagination.page - 1}
+                onPageChange={handleChangePage}
+                onRowsPerPageChange={handleChangeRowsPerPage}
+              />
+            </>
+          )}
+        </CardContent>
       </Card>
     </Box>
   );

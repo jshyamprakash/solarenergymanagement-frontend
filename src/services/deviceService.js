@@ -30,6 +30,14 @@ export const createDevice = async (deviceData) => {
 };
 
 /**
+ * Create a new device from template
+ */
+export const createDeviceFromTemplate = async (deviceData) => {
+  const response = await api.post('/devices/from-template', deviceData);
+  return response.data.data;
+};
+
+/**
  * Update device
  */
 export const updateDevice = async (id, deviceData) => {
