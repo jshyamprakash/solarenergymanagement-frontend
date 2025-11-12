@@ -65,8 +65,8 @@ const HierarchyBuilder = () => {
   // Load hierarchy when plant is selected
   useEffect(() => {
     if (selectedPlant) {
-      // Load plant details
-      dispatch(fetchPlantById(selectedPlant));
+      // Load plant details with devices
+      dispatch(fetchPlantById({ id: selectedPlant, includeDevices: true }));
 
       // Load all devices for the plant
       dispatch(fetchDevices({ plantId: selectedPlant, limit: 1000 }));

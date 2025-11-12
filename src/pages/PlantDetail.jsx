@@ -95,8 +95,8 @@ const PlantDetail = () => {
   const [energySummary, setEnergySummary] = useState([]);
 
   useEffect(() => {
-    // Fetch plant data and stats
-    dispatch(fetchPlantById(id));
+    // Fetch plant data with devices and stats
+    dispatch(fetchPlantById({ id, includeDevices: true }));
     dispatch(fetchPlantStats(id));
 
     // Generate mock chart data

@@ -120,20 +120,11 @@ const AuditLog = () => {
 
   useEffect(() => {
     if (isAdmin) {
-      loadUsers();
+      dispatch(fetchUsers({ page: 1, limit: 1000 }));
       loadStats();
       loadAuditLogs(true);
     }
-  }, [isAdmin]);
-
-  const loadUsers = async () => {
-    try {
-      const data = await getAllUsers();
-      setUsers(data.users || []);
-    } catch (err) {
-      console.error('Failed to load users:', err);
-    }
-  };
+  }, [isAdmin, dispatch]);
 
   const loadStats = async () => {
     try {

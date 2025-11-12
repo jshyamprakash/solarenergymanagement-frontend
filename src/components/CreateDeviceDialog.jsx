@@ -1,9 +1,11 @@
 /**
  * Create Device Dialog Component
  * Dialog for creating a new device from a template
+ * Refactored to use Redux for state management
  */
 
 import { useState, useEffect } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import {
   Dialog,
   DialogTitle,
@@ -24,12 +26,22 @@ import {
   CheckCircle as CheckIcon,
   Info as InfoIcon,
 } from '@mui/icons-material';
-import { getAllTemplates } from '../services/templateService';
-import { createDeviceFromTemplate } from '../services/deviceService';
+import {
+  fetchTemplates,
+  selectTemplates,
+} from '../store/slices/templatesSlice';
+import {
+  createDeviceFromTemplate as createDeviceAction,
+} from '../store/slices/deviceSlice';
 
 const CreateDeviceDialog = ({ open, onClose, plantId, parentDeviceId = null, onSuccess }) => {
+  const dispatch = useDispatch();
+
+  // Redux selectors
+  const templates = useSelector(selectTemplates);
+
+  // Local state
   const [loading, setLoading] = useState(false);
-  const [templates, setTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({
@@ -43,22 +55,9 @@ const CreateDeviceDialog = ({ open, onClose, plantId, parentDeviceId = null, onS
 
   useEffect(() => {
     if (open) {
-      loadTemplates();
+      dispatch(fetchTemplates({ isActive: true, limit: 100 }));
     }
-  }, [open]);
-
-  const loadTemplates = async () => {
-    try {
-      setLoading(true);
-      const data = await getAllTemplates({ isActive: true, limit: 100 });
-      setTemplates(data.data || []);
-    } catch (err) {
-      setError('Failed to load device templates');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [open, dispatch]);
 
   const handleTemplateChange = (e) => {
     const templateId = e.target.value;
@@ -108,7 +107,7 @@ const CreateDeviceDialog = ({ open, onClose, plantId, parentDeviceId = null, onS
         status: formData.status,
       };
 
-      const newDevice = await createDeviceFromTemplate(payload);
+      const newDevice = await dispatch(createDeviceAction(payload)).unwrap();
 
       if (onSuccess) {
         onSuccess(newDevice);
@@ -116,7 +115,7 @@ const CreateDeviceDialog = ({ open, onClose, plantId, parentDeviceId = null, onS
 
       handleClose();
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Failed to create device');
+      setError(err || 'Failed to create device');
       console.error(err);
     } finally {
       setLoading(false);

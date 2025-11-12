@@ -381,7 +381,7 @@ const PlantMap = () => {
           fullWidth
           variant="outlined"
           startIcon={<RefreshIcon />}
-          onClick={loadPlants}
+          onClick={() => dispatch(fetchPlants({ page: 1, limit: 1000 }))}
           disabled={loading}
         >
           Refresh Data

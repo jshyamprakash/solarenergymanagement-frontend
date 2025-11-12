@@ -49,19 +49,34 @@ import { selectUser } from '../store/slices/authSlice';
 import {
   fetchPlants,
   selectPlants,
+  selectPlantsLoading,
 } from '../store/slices/plantSlice';
 import {
   fetchDevices,
   selectDevices,
+  selectDevicesLoading,
 } from '../store/slices/deviceSlice';
 import {
   generateReport,
-  getReportHistory,
+  fetchReportHistory,
   downloadReport,
-  deleteReport,
-  downloadBlob,
-  generateReportFilename,
-} from '../services/reportService';
+  deleteReport as deleteReportAction,
+  selectReportHistory,
+  selectGeneratedBlob,
+  selectDownloadedBlob,
+  selectReportsLoading,
+  selectReportsGenerating,
+  selectReportsDownloading,
+  selectReportsError,
+  selectReportsSuccessMessage,
+  clearError,
+  clearSuccessMessage,
+  clearGeneratedBlob,
+  clearDownloadedBlob,
+  setFilters,
+  setPagination,
+} from '../store/slices/reportsSlice';
+import { downloadBlob, generateReportFilename } from '../services/reportService';
 
 const REPORT_TYPES = [
   { value: 'PLANT_PERFORMANCE', label: 'Plant Performance Report' },
@@ -83,12 +98,22 @@ const Reports = () => {
   // Redux selectors
   const user = useSelector(selectUser);
   const plants = useSelector(selectPlants);
+  const plantsLoading = useSelector(selectPlantsLoading);
   const devices = useSelector(selectDevices);
+  const devicesLoading = useSelector(selectDevicesLoading);
+  const reportHistory = useSelector(selectReportHistory);
+  const generatedBlob = useSelector(selectGeneratedBlob);
+  const downloadedBlob = useSelector(selectDownloadedBlob);
+  const loading = useSelector(selectReportsLoading);
+  const generating = useSelector(selectReportsGenerating);
+  const downloading = useSelector(selectReportsDownloading);
+  const error = useSelector(selectReportsError);
+  const successMessage = useSelector(selectReportsSuccessMessage);
 
   // Local UI state
   const [activeTab, setActiveTab] = useState(0);
 
-  // Generate Report Tab State
+  // Generate Report Tab State (UI-specific, not API data)
   const [reportType, setReportType] = useState('PLANT_PERFORMANCE');
   const [format, setFormat] = useState('PDF');
   const [startDate, setStartDate] = useState(dayjs().subtract(7, 'days'));
@@ -96,14 +121,8 @@ const Reports = () => {
   const [selectedPlants, setSelectedPlants] = useState([]);
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [severity, setSeverity] = useState('');
-  const [generating, setGenerating] = useState(false);
-  const [generateError, setGenerateError] = useState('');
-  const [generateSuccess, setGenerateSuccess] = useState('');
 
-  // Report History Tab State
-  const [reportHistory, setReportHistory] = useState([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  const [historyError, setHistoryError] = useState('');
+  // Report History Tab State (UI-specific)
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [searchQuery, setSearchQuery] = useState('');
@@ -115,87 +134,76 @@ const Reports = () => {
     dispatch(fetchDevices({ page: 1, limit: 1000 }));
   }, [dispatch]);
 
+  // Load report history when switching to history tab
   useEffect(() => {
     if (activeTab === 1) {
-      loadReportHistory();
+      dispatch(fetchReportHistory());
     }
-  }, [activeTab]);
+  }, [activeTab, dispatch]);
 
-  const loadReportHistory = async () => {
-    try {
-      setLoadingHistory(true);
-      setHistoryError('');
-      const data = await getReportHistory();
-      setReportHistory(data.reports || []);
-    } catch (err) {
-      setHistoryError(err.message || 'Failed to load report history');
-    } finally {
-      setLoadingHistory(false);
+  // Handle generated blob download
+  useEffect(() => {
+    if (generatedBlob) {
+      const filename = generateReportFilename(reportType, format);
+      downloadBlob(generatedBlob, filename);
+      // Clear blob after download
+      dispatch(clearGeneratedBlob());
     }
-  };
+  }, [generatedBlob, reportType, format, dispatch]);
+
+  // Handle downloaded blob
+  useEffect(() => {
+    if (downloadedBlob) {
+      // The filename will be handled in the download action
+      // Clear blob after download
+      dispatch(clearDownloadedBlob());
+    }
+  }, [downloadedBlob, dispatch]);
 
   const handleGenerateReport = async () => {
-    try {
-      setGenerating(true);
-      setGenerateError('');
-      setGenerateSuccess('');
+    // Build report data
+    const reportData = {
+      reportType,
+      format,
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+    };
 
-      // Build report data
-      const reportData = {
-        reportType,
-        format,
-        startDate: startDate.toISOString(),
-        endDate: endDate.toISOString(),
-      };
-
-      // Add type-specific parameters
-      if (reportType === 'PLANT_PERFORMANCE' || reportType === 'ENERGY_PRODUCTION') {
-        if (selectedPlants.length === 1) {
-          reportData.plantId = selectedPlants[0].plantId;
-        } else if (selectedPlants.length > 1) {
-          reportData.plantIds = selectedPlants.map(p => p.plantId);
-        }
+    // Add type-specific parameters
+    if (reportType === 'PLANT_PERFORMANCE' || reportType === 'ENERGY_PRODUCTION') {
+      if (selectedPlants.length === 1) {
+        reportData.plantId = selectedPlants[0].plantId;
+      } else if (selectedPlants.length > 1) {
+        reportData.plantIds = selectedPlants.map(p => p.plantId);
       }
+    }
 
-      if (reportType === 'DEVICE_PERFORMANCE' && selectedDevice) {
-        reportData.deviceId = selectedDevice.deviceId;
-        reportData.plantId = selectedDevice.plantId;
+    if (reportType === 'DEVICE_PERFORMANCE' && selectedDevice) {
+      reportData.deviceId = selectedDevice.deviceId;
+      reportData.plantId = selectedDevice.plantId;
+    }
+
+    if (reportType === 'ALARM' && severity) {
+      reportData.severity = severity;
+      if (selectedPlants.length > 0) {
+        reportData.plantIds = selectedPlants.map(p => p.plantId);
       }
+    }
 
-      if (reportType === 'ALARM' && severity) {
-        reportData.severity = severity;
-        if (selectedPlants.length > 0) {
-          reportData.plantIds = selectedPlants.map(p => p.plantId);
-        }
-      }
+    // Generate report via Redux
+    await dispatch(generateReport(reportData)).unwrap();
 
-      // Generate report
-      const blob = await generateReport(reportData);
-
-      // Download the file
-      const filename = generateReportFilename(reportType, format);
-      downloadBlob(blob, filename);
-
-      setGenerateSuccess(`Report generated successfully: ${filename}`);
-
-      // Refresh history if on that tab
-      if (activeTab === 1) {
-        loadReportHistory();
-      }
-    } catch (err) {
-      setGenerateError(err.message || 'Failed to generate report');
-    } finally {
-      setGenerating(false);
+    // Refresh history if on that tab
+    if (activeTab === 1) {
+      dispatch(fetchReportHistory());
     }
   };
 
   const handleDownloadReport = async (reportId, reportFormat) => {
-    try {
-      const blob = await downloadReport(reportId, reportFormat);
+    const result = await dispatch(downloadReport({ reportId, format: reportFormat })).unwrap();
+    if (result.blob) {
       const filename = generateReportFilename('downloaded', reportFormat);
-      downloadBlob(blob, filename);
-    } catch (err) {
-      setHistoryError(err.message || 'Failed to download report');
+      downloadBlob(result.blob, filename);
     }
   };
 
@@ -204,12 +212,7 @@ const Reports = () => {
       return;
     }
 
-    try {
-      await deleteReport(reportId);
-      loadReportHistory();
-    } catch (err) {
-      setHistoryError(err.message || 'Failed to delete report');
-    }
+    await dispatch(deleteReportAction(reportId)).unwrap();
   };
 
   const isFormValid = () => {
@@ -243,15 +246,15 @@ const Reports = () => {
 
   const renderGenerateReportForm = () => (
     <Box>
-      {generateError && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setGenerateError('')}>
-          {generateError}
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => dispatch(clearError())}>
+          {error}
         </Alert>
       )}
 
-      {generateSuccess && (
-        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setGenerateSuccess('')}>
-          {generateSuccess}
+      {successMessage && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => dispatch(clearSuccessMessage())}>
+          {successMessage}
         </Alert>
       )}
 
@@ -339,7 +342,7 @@ const Reports = () => {
                   placeholder="Select one or more plants"
                 />
               )}
-              loading={loadingData}
+              loading={plantsLoading}
             />
           </Grid>
         )}
@@ -360,7 +363,7 @@ const Reports = () => {
                   required
                 />
               )}
-              loading={loadingData}
+              loading={devicesLoading}
             />
           </Grid>
         )}
@@ -405,9 +408,9 @@ const Reports = () => {
 
   const renderReportHistory = () => (
     <Box>
-      {historyError && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setHistoryError('')}>
-          {historyError}
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => dispatch(clearError())}>
+          {error}
         </Alert>
       )}
 
@@ -441,7 +444,7 @@ const Reports = () => {
       </Grid>
 
       {/* History Table */}
-      {loadingHistory ? (
+      {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
           <CircularProgress />
         </Box>
@@ -499,14 +502,16 @@ const Reports = () => {
                           size="small"
                           onClick={() => handleDownloadReport(report.reportId, report.format)}
                           title="Download"
+                          disabled={downloading}
                         >
-                          <DownloadIcon />
+                          {downloading ? <CircularProgress size={20} /> : <DownloadIcon />}
                         </IconButton>
                         <IconButton
                           size="small"
                           onClick={() => handleDeleteReport(report.reportId)}
                           title="Delete"
                           color="error"
+                          disabled={loading}
                         >
                           <DeleteIcon />
                         </IconButton>

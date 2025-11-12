@@ -112,8 +112,11 @@ const PlantForm = () => {
 
   // Load plant data in edit mode using Redux
   useEffect(() => {
+    // Clear any stale plant data first
+    dispatch(clearCurrentPlant());
+
     if (isEditMode) {
-      dispatch(fetchPlantById(id));
+      dispatch(fetchPlantById({ id, includeDevices: true }));
     }
     // Always load templates for device hierarchy step
     dispatch(fetchTemplates({ isActive: true, limit: 100 }));
@@ -127,6 +130,9 @@ const PlantForm = () => {
   // Populate form when plant data is loaded from Redux
   useEffect(() => {
     if (plant && isEditMode) {
+      console.log('Loading plant data:', plant);
+      console.log('Plant devices:', plant.devices);
+
       setPlantData({
         name: plant.name || '',
         plantId: plant.plantId || '',
@@ -137,13 +143,14 @@ const PlantForm = () => {
         installationDate: plant.installationDate
           ? new Date(plant.installationDate).toISOString().split('T')[0]
           : '',
-        lat: plant.location?.lat || '',
-        lng: plant.location?.lng || '',
+        lat: plant.location?.lat || plant.location?.latitude || '',
+        lng: plant.location?.lng || plant.location?.longitude || '',
         address: plant.location?.address || '',
       });
 
       // Load existing devices if any
       if (plant.devices && plant.devices.length > 0) {
+        console.log('Loading devices from plant:', plant.devices);
         const loadedDevices = plant.devices.map((device, index) => {
           // Find parent device index in the devices array
           let parentDeviceId = 'PLANT';
@@ -157,13 +164,18 @@ const PlantForm = () => {
             name: device.name,
             deviceId: device.deviceId,
             templateName: device.template?.name || device.deviceType,
+            templateShortform: device.template?.shortform || '',
             parentDeviceId,
             serialNumber: device.serialNumber || '',
             status: device.status,
             selectedTags: device.tags?.map((tag) => tag.templateTagId).filter(Boolean) || [],
           };
         });
+        console.log('Loaded devices:', loadedDevices);
         setDevices(loadedDevices);
+      } else {
+        console.log('No devices found in plant data');
+        setDevices([]); // Clear devices if plant has none
       }
     }
   }, [plant, isEditMode]);

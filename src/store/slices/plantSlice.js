@@ -21,9 +21,9 @@ export const fetchPlants = createAsyncThunk(
 
 export const fetchPlantById = createAsyncThunk(
   'plants/fetchPlantById',
-  async (id, { rejectWithValue }) => {
+  async ({ id, includeDevices = true }, { rejectWithValue }) => {
     try {
-      const data = await plantService.getPlantById(id);
+      const data = await plantService.getPlantById(id, includeDevices);
       return data;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch plant');
