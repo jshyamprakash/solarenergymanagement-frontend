@@ -73,8 +73,6 @@ import {
   clearSuccessMessage,
   clearGeneratedBlob,
   clearDownloadedBlob,
-  setFilters,
-  setPagination,
 } from '../store/slices/reportsSlice';
 import { downloadBlob, generateReportFilename } from '../services/reportService';
 
@@ -86,8 +84,8 @@ const REPORT_TYPES = [
 ];
 
 const FORMATS = [
-  { value: 'PDF', label: 'PDF', icon: <PdfIcon /> },
-  { value: 'EXCEL', label: 'Excel', icon: <ExcelIcon /> },
+  { value: 'pdf', label: 'PDF', icon: <PdfIcon /> },
+  { value: 'excel', label: 'Excel', icon: <ExcelIcon /> },
 ];
 
 const SEVERITY_LEVELS = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO'];
@@ -96,7 +94,6 @@ const Reports = () => {
   const dispatch = useDispatch();
 
   // Redux selectors
-  const user = useSelector(selectUser);
   const plants = useSelector(selectPlants);
   const plantsLoading = useSelector(selectPlantsLoading);
   const devices = useSelector(selectDevices);
@@ -115,7 +112,7 @@ const Reports = () => {
 
   // Generate Report Tab State (UI-specific, not API data)
   const [reportType, setReportType] = useState('PLANT_PERFORMANCE');
-  const [format, setFormat] = useState('PDF');
+  const [format, setFormat] = useState('pdf');
   const [startDate, setStartDate] = useState(dayjs().subtract(7, 'days'));
   const [endDate, setEndDate] = useState(dayjs());
   const [selectedPlants, setSelectedPlants] = useState([]);
@@ -133,6 +130,13 @@ const Reports = () => {
     dispatch(fetchPlants({ page: 1, limit: 1000 }));
     dispatch(fetchDevices({ page: 1, limit: 1000 }));
   }, [dispatch]);
+
+  // Auto-select first plant when plants are loaded and no plant is selected
+  useEffect(() => {
+    if (plants.length > 0 && selectedPlants.length === 0) {
+      setSelectedPlants([plants[0]]);
+    }
+  }, [plants, selectedPlants.length]);
 
   // Load report history when switching to history tab
   useEffect(() => {
@@ -171,22 +175,25 @@ const Reports = () => {
 
     // Add type-specific parameters
     if (reportType === 'PLANT_PERFORMANCE' || reportType === 'ENERGY_PRODUCTION') {
-      if (selectedPlants.length === 1) {
-        reportData.plantId = selectedPlants[0].plantId;
+      if (selectedPlants.length === 0) {
+        // Auto-select first plant if none selected
+        reportData.plantId = plants[0]?.id;
+      } else if (selectedPlants.length === 1) {
+        reportData.plantId = selectedPlants[0].id;
       } else if (selectedPlants.length > 1) {
-        reportData.plantIds = selectedPlants.map(p => p.plantId);
+        reportData.plantIds = selectedPlants.map(p => p.id);
       }
     }
 
     if (reportType === 'DEVICE_PERFORMANCE' && selectedDevice) {
-      reportData.deviceId = selectedDevice.deviceId;
+      reportData.deviceId = selectedDevice.id;
       reportData.plantId = selectedDevice.plantId;
     }
 
     if (reportType === 'ALARM' && severity) {
       reportData.severity = severity;
       if (selectedPlants.length > 0) {
-        reportData.plantIds = selectedPlants.map(p => p.plantId);
+        reportData.plantIds = selectedPlants.map(p => p.id);
       }
     }
 
@@ -218,6 +225,10 @@ const Reports = () => {
   const isFormValid = () => {
     if (!startDate || !endDate) return false;
     if (startDate.isAfter(endDate)) return false;
+
+    if ((reportType === 'PLANT_PERFORMANCE' || reportType === 'ENERGY_PRODUCTION') && selectedPlants.length === 0) {
+      return false;
+    }
 
     if (reportType === 'DEVICE_PERFORMANCE' && !selectedDevice) {
       return false;
@@ -492,7 +503,7 @@ const Reports = () => {
                       <TableCell>{report.generatedBy?.name || 'Unknown'}</TableCell>
                       <TableCell>
                         <Chip
-                          icon={report.format === 'PDF' ? <PdfIcon /> : <ExcelIcon />}
+                          icon={report.format === 'pdf' ? <PdfIcon /> : <ExcelIcon />}
                           label={report.format}
                           size="small"
                         />

@@ -109,6 +109,14 @@ const PlantDetail = () => {
     };
   }, [id, dispatch]);
 
+  // Debug: Log plant devices when plant changes
+  useEffect(() => {
+    if (plant) {
+      console.log('PlantDetail - plant devices:', plant.devices);
+      console.log('PlantDetail - devices count:', plant.devices?.length || 0);
+    }
+  }, [plant]);
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
@@ -321,6 +329,78 @@ const PlantDetail = () => {
                         <Typography variant="h6">
                           {item._count} {item.status}
                         </Typography>
+                      </Paper>
+                    </Grid>
+                  ))}
+                </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
+        )}
+
+        {/* Device Hierarchy */}
+        {plant.devices && plant.devices.length > 0 && (
+          <Grid item xs={12}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Device Hierarchy
+                </Typography>
+                <Divider sx={{ mb: 2 }} />
+                <Grid container spacing={2}>
+                  {plant.devices.map((device) => (
+                    <Grid item xs={12} sm={6} md={4} key={device.id}>
+                      <Paper 
+                        variant="outlined" 
+                        sx={{ 
+                          p: 2, 
+                          borderLeft: `4px solid ${
+                            device.deviceType === 'TRANSFORMER' ? '#1976d2' :
+                            device.deviceType === 'INVERTER' ? '#388e3c' :
+                            device.deviceType === 'METER' ? '#f57c00' :
+                            '#757575'
+                          }`
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                          <DeviceIcon sx={{ mr: 1, color: 'text.secondary' }} />
+                          <Typography variant="subtitle1" fontWeight="bold">
+                            {device.name}
+                          </Typography>
+                        </Box>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                          {device.template?.name || device.deviceType}
+                        </Typography>
+                        <Typography variant="body2" sx={{ mb: 0.5 }}>
+                          <strong>Device ID:</strong> {device.deviceId}
+                        </Typography>
+                        <Typography variant="body2" sx={{ mb: 0.5 }}>
+                          <strong>Status:</strong> 
+                          <Chip 
+                            label={device.status} 
+                            size="small" 
+                            sx={{ ml: 1 }}
+                            color={device.status === 'ONLINE' ? 'success' : 'default'}
+                          />
+                        </Typography>
+                        {device.parentDevice && (
+                          <Typography variant="body2" sx={{ mb: 0.5 }}>
+                            <strong>Parent:</strong> {device.parentDevice.name}
+                          </Typography>
+                        )}
+                        {device.tags && device.tags.length > 0 && (
+                          <Box sx={{ mt: 1 }}>
+                            {device.tags.map((tag) => (
+                              <Chip
+                                key={tag.id}
+                                label={tag.templateTag.displayName || tag.templateTag.tagName}
+                                size="small"
+                                variant="outlined"
+                                sx={{ mr: 0.5, mb: 0.5 }}
+                              />
+                            ))}
+                          </Box>
+                        )}
                       </Paper>
                     </Grid>
                   ))}

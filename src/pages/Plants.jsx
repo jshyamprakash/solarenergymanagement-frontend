@@ -69,7 +69,8 @@ const Plants = () => {
   const loading = useSelector(selectPlantsLoading);
   const error = useSelector(selectPlantsError);
 
-  const canModify = isAdmin || isPlantManager;
+  const canModify = isAdmin; // Only admins can modify plants
+  const canView = isAdmin || isPlantManager; // Plant managers can view
 
   // Load plants when component mounts or filters/pagination change
   useEffect(() => {

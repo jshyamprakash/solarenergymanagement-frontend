@@ -1,6 +1,7 @@
 /**
- * Masters Page
- * Unified page for all master data management with tabs
+ * Management Page
+ * Unified page for management operations with tabs
+ * Includes Plant Management, User Management, and User-Plant Access
  */
 
 import React, { useState } from 'react';
@@ -14,11 +15,14 @@ import {
   Alert,
 } from '@mui/material';
 import {
-  Category as TemplateIcon,
-  Label as TagIcon,
+  Factory as PlantIcon,
+  People as UserIcon,
+  Assignment as UserPlantIcon,
 } from '@mui/icons-material';
-import DeviceTypes from './DeviceTypes';
-import TagManagement from './TagManagement';
+import { selectIsAdmin } from '../store/slices/authSlice';
+import Plants from './Plants';
+import Users from './Users';
+import UserPlantManagement from './UserPlantManagement';
 
 // Tab Panel Component
 function TabPanel({ children, value, index, ...other }) {
@@ -26,8 +30,8 @@ function TabPanel({ children, value, index, ...other }) {
     <div
       role="tabpanel"
       hidden={value !== index}
-      id={`masters-tabpanel-${index}`}
-      aria-labelledby={`masters-tab-${index}`}
+      id={`management-tabpanel-${index}`}
+      aria-labelledby={`management-tab-${index}`}
       {...other}
     >
       {value === index && (
@@ -39,7 +43,7 @@ function TabPanel({ children, value, index, ...other }) {
   );
 }
 
-const Masters = () => {
+const Management = () => {
   const [activeTab, setActiveTab] = useState(0);
   const isAdmin = useSelector(selectIsAdmin);
 
@@ -52,17 +56,24 @@ const Masters = () => {
     const tabs = [
       {
         index: 0,
-        label: 'Device Templates',
-        icon: <TemplateIcon />,
-        adminOnly: true,
-        component: <DeviceTypes />
+        label: 'Plant Management',
+        icon: <PlantIcon />,
+        adminOnly: false, // All users can view plants
+        component: <Plants />
       },
       {
         index: 1,
-        label: 'Tag Management',
-        icon: <TagIcon />,
+        label: 'User Management',
+        icon: <UserIcon />,
         adminOnly: true,
-        component: <TagManagement />
+        component: <Users />
+      },
+      {
+        index: 2,
+        label: 'User-Plant Access',
+        icon: <UserPlantIcon />,
+        adminOnly: true,
+        component: <UserPlantManagement />
       }
     ];
 
@@ -77,12 +88,12 @@ const Masters = () => {
       {/* Page Header */}
       <Box sx={{ mb: 3 }}>
         <Typography variant="h4" gutterBottom>
-          Master Data Management
+          Management
         </Typography>
         <Typography variant="body2" color="text.secondary">
           {isAdmin 
-            ? 'Manage device templates and tags'
-            : 'Device templates and tags require administrator privileges'
+            ? 'Manage plants, users, and user-plant assignments'
+            : 'Manage your assigned plants and view plant information'
           }
         </Typography>
       </Box>
@@ -90,7 +101,7 @@ const Masters = () => {
       {/* Admin Access Alert */}
       {!isAdmin && (
         <Alert severity="info" sx={{ mb: 3 }}>
-          Device templates and tag management require administrator privileges. Contact your system administrator for access.
+          Some management features require administrator privileges. Contact your system administrator for access to user management and system configuration.
         </Alert>
       )}
 
@@ -101,7 +112,7 @@ const Masters = () => {
             <Tabs
               value={activeTab}
               onChange={handleTabChange}
-              aria-label="master data tabs"
+              aria-label="management tabs"
               variant="fullWidth"
             >
               {availableTabs.map((tab) => (
@@ -110,8 +121,8 @@ const Masters = () => {
                   icon={tab.icon}
                   iconPosition="start"
                   label={tab.label}
-                  id={`masters-tab-${tab.index}`}
-                  aria-controls={`masters-tabpanel-${tab.index}`}
+                  id={`management-tab-${tab.index}`}
+                  aria-controls={`management-tabpanel-${tab.index}`}
                 />
               ))}
             </Tabs>
@@ -126,11 +137,11 @@ const Masters = () => {
         </Paper>
       ) : (
         <Alert severity="warning">
-          You don't have permission to access any master data management features. Please contact your administrator.
+          You don't have permission to access any management features. Please contact your administrator.
         </Alert>
       )}
     </Box>
   );
 };
 
-export default Masters;
+export default Management;

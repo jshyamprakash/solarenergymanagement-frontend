@@ -9,17 +9,32 @@ import api from './api';
  * Generate a report
  * @param {Object} reportData - Report parameters
  * @param {string} reportData.reportType - Type of report (PLANT_PERFORMANCE, DEVICE_PERFORMANCE, ALARM, ENERGY_PRODUCTION)
- * @param {string} reportData.format - Report format (PDF, EXCEL)
+ * @param {string} reportData.format - Report format (PDF, EXCEL, JSON)
  * @param {string} reportData.startDate - Start date (ISO string)
  * @param {string} reportData.endDate - End date (ISO string)
- * @param {string} reportData.plantId - Plant ID (optional)
- * @param {string} reportData.deviceId - Device ID (optional)
+ * @param {number} reportData.plantId - Plant ID (integer, optional)
+ * @param {number} reportData.deviceId - Device ID (integer, optional)
  * @param {string[]} reportData.plantIds - Array of plant IDs for multi-plant reports (optional)
  * @param {string} reportData.severity - Alarm severity filter (optional)
  * @returns {Blob} - Report file blob
  */
 export const generateReport = async (reportData) => {
-  const response = await api.post('/reports/generate', reportData, {
+  const { reportType, ...params } = reportData;
+  
+  // Map report types to correct endpoints
+  const endpointMap = {
+    'PLANT_PERFORMANCE': '/reports/plant-performance',
+    'DEVICE_PERFORMANCE': '/reports/device-performance',
+    'ALARM': '/reports/alarms',
+    'ENERGY_PRODUCTION': '/reports/energy-production'
+  };
+
+  const endpoint = endpointMap[reportType];
+  if (!endpoint) {
+    throw new Error(`Invalid report type: ${reportType}`);
+  }
+
+  const response = await api.post(endpoint, params, {
     responseType: 'blob',
   });
 

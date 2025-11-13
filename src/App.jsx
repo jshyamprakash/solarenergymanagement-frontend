@@ -18,14 +18,14 @@ import Plants from './pages/Plants';
 import PlantDetail from './pages/PlantDetail';
 import PlantForm from './pages/PlantForm';
 import PlantMap from './pages/PlantMap';
-import Devices from './pages/Devices';
 import DeviceDetail from './pages/DeviceDetail';
 import DeviceForm from './pages/DeviceForm';
 import Alarms from './pages/Alarms';
 import Users from './pages/Users';
-import UserDetail from './pages/UserDetail';
 import UserForm from './pages/UserForm';
+import UserDetail from './pages/UserDetail';
 import Masters from './pages/Masters';
+import Management from './pages/Management';
 import Reports from './pages/Reports';
 // AUDIT LOG - COMMENTED OUT (Enable when needed)
 // import AuditLog from './pages/AuditLog';
@@ -59,18 +59,48 @@ function App() {
 
               {/* Plant Management Routes */}
               <Route path="plants" element={<Plants />} />
-              <Route path="plants/new" element={<PlantForm />} />
+              <Route
+                path="plants/new"
+                element={
+                  <ProtectedRoute requiredRoles={['ADMIN']}>
+                    <PlantForm />
+                  </ProtectedRoute>
+                }
+              />
               <Route path="plants/:id" element={<PlantDetail />} />
-              <Route path="plants/:id/edit" element={<PlantForm />} />
+              <Route
+                path="plants/:id/edit"
+                element={
+                  <ProtectedRoute requiredRoles={['ADMIN']}>
+                    <PlantForm />
+                  </ProtectedRoute>
+                }
+              />
 
               {/* Device Management Routes */}
-              <Route path="devices" element={<Devices />} />
-              <Route path="devices/new" element={<DeviceForm />} />
+              <Route
+                path="devices/new"
+                element={
+                  <ProtectedRoute requiredRoles={['ADMIN']}>
+                    <DeviceForm />
+                  </ProtectedRoute>
+                }
+              />
               <Route path="devices/:id" element={<DeviceDetail />} />
-              <Route path="devices/:id/edit" element={<DeviceForm />} />
+              <Route
+                path="devices/:id/edit"
+                element={
+                  <ProtectedRoute requiredRoles={['ADMIN']}>
+                    <DeviceForm />
+                  </ProtectedRoute>
+                }
+              />
 
               {/* Alarm Management Routes */}
               <Route path="alarms" element={<Alarms />} />
+
+              {/* Management Route - Unified management interface */}
+              <Route path="management" element={<Management />} />
 
               {/* Masters Route - Unified master data management */}
               <Route path="masters" element={<Masters />} />

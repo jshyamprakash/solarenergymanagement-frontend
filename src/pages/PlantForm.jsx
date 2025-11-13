@@ -62,6 +62,7 @@ import {
   fetchTemplateById,
   selectTemplates,
 } from '../store/slices/templatesSlice';
+import { selectIsAdmin } from '../store/slices/authSlice';
 
 const STEPS = ['Plant Details', 'Device Hierarchy', 'Review & Submit'];
 
@@ -72,6 +73,7 @@ const PlantForm = () => {
   const isEditMode = !!id;
 
   // Redux selectors
+  const isAdmin = useSelector(selectIsAdmin);
   const plant = useSelector(selectCurrentPlant);
   const templates = useSelector(selectTemplates);
   const loading = useSelector(selectPlantsLoading);
@@ -112,9 +114,7 @@ const PlantForm = () => {
 
   // Load plant data in edit mode using Redux
   useEffect(() => {
-    // Clear any stale plant data first
-    dispatch(clearCurrentPlant());
-
+    // Always fetch fresh data when entering edit mode
     if (isEditMode) {
       dispatch(fetchPlantById({ id, includeDevices: true }));
     }
@@ -129,9 +129,8 @@ const PlantForm = () => {
 
   // Populate form when plant data is loaded from Redux
   useEffect(() => {
-    if (plant && isEditMode) {
-      console.log('Loading plant data:', plant);
-      console.log('Plant devices:', plant.devices);
+    if (plant && isEditMode && plant.id === parseInt(id)) {
+
 
       setPlantData({
         name: plant.name || '',
@@ -171,10 +170,10 @@ const PlantForm = () => {
             selectedTags: device.tags?.map((tag) => tag.templateTagId).filter(Boolean) || [],
           };
         });
-        console.log('Loaded devices:', loadedDevices);
+
         setDevices(loadedDevices);
       } else {
-        console.log('No devices found in plant data');
+
         setDevices([]); // Clear devices if plant has none
       }
     }
@@ -443,7 +442,12 @@ const PlantForm = () => {
         await dispatch(createPlantAction(payload)).unwrap();
       }
 
-      navigate('/plants');
+      // For new plants, go to plants list. For updates, go to plant detail page
+      if (isEditMode) {
+        navigate(`/plants/${id}`);
+      } else {
+        navigate('/plants');
+      }
     } catch (err) {
       setError(err || 'Failed to save plant');
     } finally {
@@ -564,6 +568,24 @@ const PlantForm = () => {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
         <CircularProgress />
+      </Box>
+    );
+  }
+
+  // Check access permissions
+  if (!isAdmin) {
+    return (
+      <Box>
+        <Alert severity="error" sx={{ mb: 3 }}>
+          Access Denied: Only administrators can create or edit plants.
+        </Alert>
+        <Button
+          startIcon={<BackIcon />}
+          onClick={() => navigate('/plants')}
+          sx={{ mb: 2 }}
+        >
+          Back to Plants
+        </Button>
       </Box>
     );
   }

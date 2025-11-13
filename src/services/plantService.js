@@ -6,10 +6,18 @@
 import api from './api';
 
 /**
- * Get all plants with filters and pagination
+ * Get all plants with filters and pagination (Admin only)
  */
 export const getAllPlants = async (params = {}) => {
   const response = await api.get('/plants', { params });
+  return response.data.data;
+};
+
+/**
+ * Get accessible plants for current user (respects permissions)
+ */
+export const getAccessiblePlants = async (params = {}) => {
+  const response = await api.get('/user-plant-map/accessible', { params });
   return response.data.data;
 };
 

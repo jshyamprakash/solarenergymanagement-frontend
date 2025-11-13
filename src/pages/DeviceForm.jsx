@@ -39,6 +39,7 @@ import {
   fetchPlants,
   selectPlants,
 } from '../store/slices/plantSlice';
+import { selectIsAdmin } from '../store/slices/authSlice';
 
 const DEVICE_TYPES = [
   'INVERTER',
@@ -60,6 +61,7 @@ const DeviceForm = () => {
   const isEditMode = Boolean(id);
 
   // Redux selectors
+  const isAdmin = useSelector(selectIsAdmin);
   const device = useSelector(selectCurrentDevice);
   const plants = useSelector(selectPlants);
   const availableParentDevices = useSelector(selectDevices);
@@ -173,6 +175,23 @@ const DeviceForm = () => {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
         <CircularProgress />
+      </Box>
+    );
+  }
+
+  // Check access permissions
+  if (!isAdmin) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="error" sx={{ mb: 3 }}>
+          Access Denied: Only administrators can create or edit devices.
+        </Alert>
+        <Button
+          startIcon={<BackIcon />}
+          onClick={() => navigate('/devices')}
+        >
+          Back to Devices
+        </Button>
       </Box>
     );
   }

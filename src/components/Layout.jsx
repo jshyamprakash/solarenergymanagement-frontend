@@ -3,7 +3,7 @@
  * Wrapper for authenticated pages with navigation
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
@@ -15,6 +15,11 @@ import {
   Container,
   Tabs,
   Tab,
+  IconButton,
+  Menu,
+  MenuItem,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -29,6 +34,7 @@ import {
   // AUDIT LOG - COMMENTED OUT (Enable when needed)
   // History as HistoryIcon,
   Settings as MastersIcon,
+  BusinessCenter as ManagementIcon,
 } from '@mui/icons-material';
 import { logout as logoutAction, selectUser, selectIsAdmin } from '../store/slices/authSlice';
 
@@ -38,10 +44,26 @@ const Layout = () => {
   const dispatch = useDispatch();
   const user = useSelector(selectUser);
   const isAdmin = useSelector(selectIsAdmin);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [mobileMenuAnchor, setMobileMenuAnchor] = useState(null);
 
   const handleLogout = async () => {
     await dispatch(logoutAction());
     navigate('/login');
+  };
+
+  const handleMobileMenuOpen = (event) => {
+    setMobileMenuAnchor(event.currentTarget);
+  };
+
+  const handleMobileMenuClose = () => {
+    setMobileMenuAnchor(null);
+  };
+
+  const handleNavigation = (path) => {
+    navigate(path);
+    handleMobileMenuClose();
   };
 
   // Determine active tab based on current path
@@ -49,7 +71,7 @@ const Layout = () => {
     const path = location.pathname;
     if (path.startsWith('/map')) return '/map';
     if (path.startsWith('/plants')) return '/plants';
-    if (path.startsWith('/devices')) return '/devices';
+    if (path.startsWith('/management')) return '/management';
     if (path.startsWith('/masters')) return '/masters';
     if (path.startsWith('/alarms')) return '/alarms';
     if (path.startsWith('/reports')) return '/reports';
@@ -61,6 +83,19 @@ const Layout = () => {
 
   const activeTab = getActiveTab();
 
+  // Navigation items configuration
+  const navItems = [
+    { label: 'Dashboard', value: '/dashboard', icon: <DashboardIcon /> },
+    { label: 'Map', value: '/map', icon: <MapIcon /> },
+    { label: 'Plants', value: '/plants', icon: <PlantIcon /> },
+    { label: 'Management', value: '/management', icon: <ManagementIcon /> },
+    { label: 'Masters', value: '/masters', icon: <MastersIcon /> },
+    { label: 'Alarms', value: '/alarms', icon: <AlarmIcon /> },
+    { label: 'Reports', value: '/reports', icon: <ReportIcon /> },
+    // AUDIT LOG - COMMENTED OUT (Enable when needed)
+    // ...(isAdmin ? [{ label: 'Audit Log', value: '/audit', icon: <HistoryIcon /> }] : []),
+  ];
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       {/* App Bar */}
@@ -68,100 +103,87 @@ const Layout = () => {
         <Toolbar>
           <SunIcon sx={{ mr: 2, fontSize: 32 }} />
 
-          <Typography variant="h6" component="div" sx={{ mr: 4 }}>
+          <Typography variant="h6" component="div" sx={{ mr: 2 }}>
             Solar Monitor
           </Typography>
 
-          {/* Navigation Tabs */}
-          <Tabs
-            value={activeTab}
-            onChange={(e, value) => navigate(value)}
-            textColor="inherit"
-            indicatorColor="secondary"
-            sx={{ flexGrow: 1 }}
-          >
-            <Tab
-              icon={<DashboardIcon />}
-              iconPosition="start"
-              label="Dashboard"
-              value="/dashboard"
-              sx={{ minHeight: 64 }}
-            />
-            <Tab
-              icon={<MapIcon />}
-              iconPosition="start"
-              label="Map"
-              value="/map"
-              sx={{ minHeight: 64 }}
-            />
-            <Tab
-              icon={<PlantIcon />}
-              iconPosition="start"
-              label="Plants"
-              value="/plants"
-              sx={{ minHeight: 64 }}
-            />
-            <Tab
-              icon={<DeviceIcon />}
-              iconPosition="start"
-              label="Devices"
-              value="/devices"
-              sx={{ minHeight: 64 }}
-            />
-            <Tab
-              icon={<MastersIcon />}
-              iconPosition="start"
-              label="Masters"
-              value="/masters"
-              sx={{ minHeight: 64 }}
-            />
-            <Tab
-              icon={<AlarmIcon />}
-              iconPosition="start"
-              label="Alarms"
-              value="/alarms"
-              sx={{ minHeight: 64 }}
-            />
-            <Tab
-              icon={<ReportIcon />}
-              iconPosition="start"
-              label="Reports"
-              value="/reports"
-              sx={{ minHeight: 64 }}
-            />
-            {/* AUDIT LOG - COMMENTED OUT (Enable when needed) */}
-            {/* {isAdmin && (
-              <Tab
-                icon={<HistoryIcon />}
-                iconPosition="start"
-                label="Audit Log"
-                value="/audit"
-                sx={{ minHeight: 64 }}
-              />
-            )} */}
-            {isAdmin && (
-              <Tab
-                icon={<PeopleIcon />}
-                iconPosition="start"
-                label="Users"
-                value="/users"
-                sx={{ minHeight: 64 }}
-              />
-            )}
-          </Tabs>
+          {/* Desktop Navigation */}
+          {!isMobile ? (
+            <>
+              <Tabs
+                value={activeTab}
+                onChange={(e, value) => navigate(value)}
+                textColor="inherit"
+                indicatorColor="secondary"
+                sx={{ flexGrow: 1 }}
+                variant="scrollable"
+                scrollButtons="auto"
+              >
+                {navItems.map((item) => (
+                  <Tab
+                    key={item.value}
+                    icon={item.icon}
+                    iconPosition="start"
+                    label={item.label}
+                    value={item.value}
+                    sx={{ minHeight: 64 }}
+                  />
+                ))}
+              </Tabs>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Typography variant="body2">
-              {user?.name} ({user?.role})
-            </Typography>
-            <Button
-              color="inherit"
-              startIcon={<LogoutIcon />}
-              onClick={handleLogout}
-            >
-              Logout
-            </Button>
-          </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 2 }}>
+                <Typography variant="body2" sx={{ display: { xs: 'none', sm: 'block' } }}>
+                  {user?.name}
+                </Typography>
+                <Button
+                  color="inherit"
+                  size="small"
+                  startIcon={<LogoutIcon />}
+                  onClick={handleLogout}
+                >
+                  <Typography sx={{ display: { xs: 'none', sm: 'block' } }}>Logout</Typography>
+                </Button>
+              </Box>
+            </>
+          ) : (
+            /* Mobile Navigation */
+            <>
+              <Box sx={{ flexGrow: 1 }} />
+              <IconButton
+                color="inherit"
+                onClick={handleMobileMenuOpen}
+                sx={{ ml: 1 }}
+              >
+                <MenuIcon />
+              </IconButton>
+              <Menu
+                anchorEl={mobileMenuAnchor}
+                open={Boolean(mobileMenuAnchor)}
+                onClose={handleMobileMenuClose}
+                onClick={handleMobileMenuClose}
+              >
+                {navItems.map((item) => (
+                  <MenuItem
+                    key={item.value}
+                    onClick={() => handleNavigation(item.value)}
+                    selected={activeTab === item.value}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {item.icon}
+                      <Typography>{item.label}</Typography>
+                    </Box>
+                  </MenuItem>
+                ))}
+                <MenuItem divider />
+                <MenuItem onClick={handleLogout}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <LogoutIcon />
+                    <Typography>Logout</Typography>
+                  </Box>
+                </MenuItem>
+              </Menu>
+            </>
+          )}
         </Toolbar>
       </AppBar>
 

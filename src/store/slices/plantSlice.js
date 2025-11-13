@@ -9,9 +9,16 @@ import * as plantService from '../../services/plantService';
 // Async thunks
 export const fetchPlants = createAsyncThunk(
   'plants/fetchPlants',
-  async (params = {}, { rejectWithValue }) => {
+  async (params = {}, { rejectWithValue, getState }) => {
     try {
-      const data = await plantService.getAllPlants(params);
+      const { auth } = getState();
+      const isAdmin = auth.user?.role === 'ADMIN';
+      
+      // Use accessible plants for non-admin users
+      const data = isAdmin 
+        ? await plantService.getAllPlants(params)
+        : await plantService.getAccessiblePlants(params);
+      
       return data;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch plants');
