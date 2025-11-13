@@ -6,6 +6,7 @@
 
 import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useSearchParams } from 'react-router-dom';
 import {
   Grid,
   Card,
@@ -62,12 +63,12 @@ const StatCard = ({ title, value, icon, color }) => (
 
 const Dashboard = () => {
   const dispatch = useDispatch();
-
-  // Redux selectors
   const user = useSelector(selectUser);
   const plants = useSelector(selectPlants);
   const loading = useSelector(selectPlantsLoading);
   const error = useSelector(selectPlantsError);
+  const [searchParams] = useSearchParams();
+  const selectedPlantId = searchParams.get('plant');
 
   // Local state for chart data (UI-specific)
   const [timeSeriesData, setTimeSeriesData] = useState([]);
@@ -106,6 +107,15 @@ const Dashboard = () => {
 
   return (
     <Box>
+      {/* Plant Selection Notification */}
+      {selectedPlantId && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          <Typography variant="body2">
+            Plant selected from map: <strong>{plants.find(p => p.id === parseInt(selectedPlantId))?.name || 'Unknown'}</strong>
+          </Typography>
+        </Alert>
+      )}
+
       {/* Welcome Header */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" gutterBottom>

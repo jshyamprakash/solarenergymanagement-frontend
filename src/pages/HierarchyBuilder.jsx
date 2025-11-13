@@ -124,6 +124,8 @@ const HierarchyBuilder = () => {
   };
 
   const renderTree = (node, level = 0) => {
+    if (!node) return null;
+    
     const isGrid = node.isGrid;
     const isPlant = node.isPlant;
     const isDevice = !isGrid && !isPlant;
@@ -327,7 +329,10 @@ const HierarchyBuilder = () => {
             </Box>
 
             <Box sx={{ backgroundColor: 'background.default', p: 2, borderRadius: 1 }}>
-              {renderTree(buildDeviceTree())}
+              {(() => {
+                const tree = buildDeviceTree();
+                return tree ? renderTree(tree) : null;
+              })()}
             </Box>
           </>
         )}

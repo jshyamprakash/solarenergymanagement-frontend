@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
+import { selectIsAdmin } from '../store/slices/authSlice';
 import {
   Box,
   Paper,

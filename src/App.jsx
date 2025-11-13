@@ -105,10 +105,10 @@ function App() {
               {/* Masters Route - Unified master data management */}
               <Route path="masters" element={<Masters />} />
 
-              {/* Legacy routes - redirect to Masters for backward compatibility */}
+              {/* Legacy routes - redirect to appropriate pages for backward compatibility */}
               <Route path="tags" element={<Navigate to="/masters" replace />} />
               <Route path="device-types" element={<Navigate to="/masters" replace />} />
-              <Route path="hierarchy-builder" element={<Navigate to="/masters" replace />} />
+              <Route path="hierarchy-builder" element={<Navigate to="/management" replace />} />
 
               {/* User Management Routes (Admin only) */}
               <Route

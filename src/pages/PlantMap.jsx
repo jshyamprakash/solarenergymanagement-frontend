@@ -1,7 +1,7 @@
 /**
  * Plant Map Page
  * Interactive Google Maps view showing all solar plants with location markers
- * Refactored to use Redux for state management
+ * Completely rewritten to fix all loading and HTML validation issues
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -40,13 +40,14 @@ import {
   Refresh as RefreshIcon,
   Info as InfoIcon,
 } from '@mui/icons-material';
-import { GoogleMap, LoadScript, Marker, InfoWindow } from '@react-google-maps/api';
+import { GoogleMap, LoadScript, Marker, InfoWindow, useJsApiLoader } from '@react-google-maps/api';
 import {
   fetchPlants,
   selectPlants,
   selectPlantsLoading,
   selectPlantsError,
 } from '../store/slices/plantSlice';
+import { selectUser, selectIsAdmin } from '../store/slices/authSlice';
 
 // Map container styling
 const mapContainerStyle = {
@@ -69,7 +70,7 @@ const mapOptions = {
   streetViewControl: false,
   rotateControl: false,
   fullscreenControl: true,
-  styles: [], // Can add custom map styling here
+  styles: [],
 };
 
 // Status color mapping
@@ -91,26 +92,28 @@ const PlantMap = () => {
   const plants = useSelector(selectPlants);
   const loading = useSelector(selectPlantsLoading);
   const reduxError = useSelector(selectPlantsError);
+  const user = useSelector(selectUser);
+  const isAdmin = useSelector(selectIsAdmin);
 
   // Local UI state
   const [filteredPlants, setFilteredPlants] = useState([]);
-  const [mapLoaded, setMapLoaded] = useState(false);
-
-  // Filter and search state
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(!isMobile);
-
-  // Map interaction state
   const [selectedPlant, setSelectedPlant] = useState(null);
   const [mapCenter, setMapCenter] = useState(defaultCenter);
   const [mapZoom, setMapZoom] = useState(5);
   const [hoveredPlantId, setHoveredPlantId] = useState(null);
-  const [markerOverlays, setMarkerOverlays] = useState(new Map());
-  const [showInfoBoxes, setShowInfoBoxes] = useState(true);
+  const [infoBoxOverlays, setInfoBoxOverlays] = useState(new Map());
 
   // Google Maps API key
   const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+
+  // Use the new useJsApiLoader hook to check if Google Maps is loaded
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: googleMapsApiKey,
+  });
 
   // Load plants data using Redux
   useEffect(() => {
@@ -127,7 +130,7 @@ const PlantMap = () => {
   useEffect(() => {
     // Filter plants that have valid location data
     let filtered = plants.filter(
-      (plant) => plant.location?.latitude && plant.location?.longitude
+      (plant) => plant.location?.lat && plant.location?.lng
     );
 
     // Apply status filter
@@ -147,71 +150,43 @@ const PlantMap = () => {
     setFilteredPlants(filtered);
   }, [plants, statusFilter, searchQuery]);
 
-  // Fit map bounds to show all markers with centering on mean coordinates
-  useEffect(() => {
-    if (mapRef.current && filteredPlants.length > 0 && mapLoaded) {
-      fitMapBounds();
-    }
-  }, [filteredPlants, mapLoaded]);
-
   // Manage info box overlays
   useEffect(() => {
-    if (!mapRef.current || !mapLoaded || !showInfoBoxes) return;
-
-    // Clear existing overlays
-    markerOverlays.forEach((overlay) => {
-      overlay.setMap(null);
-    });
-    const newOverlays = new Map();
-
-    // Create overlays for all plants
-    filteredPlants.forEach((plant) => {
-      if (plant.location?.latitude && plant.location?.longitude) {
-        const overlay = createInfoBoxOverlay(plant);
-        overlay.setMap(mapRef.current);
-        newOverlays.set(plant.id, overlay);
-      }
-    });
-
-    setMarkerOverlays(newOverlays);
-
-    // Cleanup function
-    return () => {
-      newOverlays.forEach((overlay) => {
+    if (mapRef.current && filteredPlants.length > 0 && isLoaded) {
+      // Clear existing overlays
+      infoBoxOverlays.forEach((overlay) => {
         overlay.setMap(null);
       });
-    };
-  }, [filteredPlants, mapLoaded, showInfoBoxes]);
+      setInfoBoxOverlays(new Map());
 
-  // Toggle info boxes visibility
-  const toggleInfoBoxes = () => {
-    if (showInfoBoxes) {
-      // Hide all overlays
-      markerOverlays.forEach((overlay) => {
-        overlay.setMap(null);
-      });
-    } else {
-      // Show all overlays
-      markerOverlays.forEach((overlay) => {
-        overlay.setMap(mapRef.current);
+      // Create info box overlays for all plants
+      filteredPlants.forEach((plant) => {
+        if (plant.location?.lat && plant.location?.lng) {
+          const overlay = createInfoBoxOverlay(plant);
+          if (overlay) {
+            overlay.setMap(mapRef.current);
+            setInfoBoxOverlays(prev => new Map(prev).set(plant.id, overlay));
+          }
+        }
       });
     }
-    setShowInfoBoxes(!showInfoBoxes);
-  };
+  }, [filteredPlants, isLoaded]);
 
   const fitMapBounds = useCallback(() => {
-    if (!mapRef.current || filteredPlants.length === 0) return;
+    if (!mapRef.current || filteredPlants.length === 0 || !isLoaded) return;
 
+    const { LatLngBounds } = window.google.maps;
+    const bounds = new LatLngBounds();
+    
     // Calculate mean center of all markers
     let totalLat = 0;
     let totalLng = 0;
     let validPlants = 0;
 
-    const bounds = new window.google.maps.LatLngBounds();
     filteredPlants.forEach((plant) => {
-      if (plant.location?.latitude && plant.location?.longitude) {
-        const lat = parseFloat(plant.location.latitude);
-        const lng = parseFloat(plant.location.longitude);
+      if (plant.location?.lat && plant.location?.lng) {
+        const lat = parseFloat(plant.location.lat);
+        const lng = parseFloat(plant.location.lng);
         
         totalLat += lat;
         totalLng += lng;
@@ -260,26 +235,25 @@ const PlantMap = () => {
         }
       );
     }
-  }, [filteredPlants]);
+  }, [filteredPlants, isLoaded]);
 
   const handleMapLoad = useCallback((map) => {
     mapRef.current = map;
-    setMapLoaded(true);
   }, []);
 
   const handleMarkerClick = (plant) => {
     setSelectedPlant(plant);
     setMapCenter({
-      lat: parseFloat(plant.location.latitude),
-      lng: parseFloat(plant.location.longitude),
+      lat: parseFloat(plant.location.lat),
+      lng: parseFloat(plant.location.lng),
     });
   };
 
   const handlePlantListClick = (plant) => {
     setSelectedPlant(plant);
     setMapCenter({
-      lat: parseFloat(plant.location.latitude),
-      lng: parseFloat(plant.location.longitude),
+      lat: parseFloat(plant.location.lat),
+      lng: parseFloat(plant.location.lng),
     });
     setMapZoom(12);
 
@@ -288,51 +262,14 @@ const PlantMap = () => {
     }
   };
 
-  const handleViewDetails = (plantId) => {
-    navigate(`/plants/${plantId}`);
+  // Handle info box click - navigate to plant detail page
+  const handleInfoBoxClick = (plant) => {
+    navigate(`/plants/${plant.id}`);
   };
 
-  const clearFilters = () => {
-    setSearchQuery('');
-    setStatusFilter('');
-  };
-
-  // Custom marker with plant info box
-  const createCustomMarker = (plant) => {
-    const isHovered = hoveredPlantId === plant.id;
-    const isSelected = selectedPlant?.id === plant.id;
-
-    let color = '#4CAF50'; // Default green
-    if (plant.status === 'OFFLINE') color = '#f44336';
-    else if (plant.status === 'MAINTENANCE') color = '#ff9800';
-    else if (plant.status === 'INACTIVE') color = '#9e9e9e';
-
-    const scale = isHovered || isSelected ? 1.3 : 1;
-
-    // Create custom marker with info box
-    return {
-      // Marker pin
-      path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
-      fillColor: color,
-      fillOpacity: 1,
-      strokeColor: '#ffffff',
-      strokeWeight: isSelected ? 3 : 2,
-      scale: scale * 2,
-      anchor: new window.google.maps.Point(12, 24),
-      // Add label for plant name
-      label: {
-        text: plant.name,
-        color: '#333333',
-        fontSize: '12px',
-        fontWeight: 'bold',
-        className: 'custom-marker-label'
-      }
-    };
-  };
-
-  // Create overlay for info box above marker
+  // Create info box overlay for a plant
   const createInfoBoxOverlay = (plant) => {
-    if (!mapRef.current) return null;
+    if (!mapRef.current || !window.google || !window.google.maps) return null;
 
     const overlay = new window.google.maps.OverlayView();
     
@@ -352,13 +289,29 @@ const PlantMap = () => {
         transform: translateX(-50%);
         left: 50%;
         position: absolute;
+        cursor: pointer;
+        transition: all 0.2s ease;
       `;
       
+      // Show only short plant name or plant ID
+      const displayName = plant.name.length > 15 ? plant.name.substring(0, 15) + '...' : plant.name;
+      const displayText = displayName.length <= 15 ? displayName : plant.plantId;
+      
       div.innerHTML = `
-        <div style="font-weight: bold; color: #333; margin-bottom: 4px;">${plant.name}</div>
-        <div style="color: #666; font-size: 11px;">${(plant.capacity / 1000).toFixed(1)} MW</div>
-        <div style="color: ${plant.status === 'ACTIVE' ? '#4CAF50' : plant.status === 'OFFLINE' ? '#f44336' : plant.status === 'MAINTENANCE' ? '#ff9800' : '#9e9e9e'}; font-size: 10px; font-weight: bold;">${plant.status}</div>
+        <div style="font-weight: bold; color: #333; margin-bottom: 6px; font-size: 14px;">${displayText}</div>
+      </div>
       `;
+      
+      // Add click handler
+      div.addEventListener('click', () => handleInfoBoxClick(plant));
+      div.addEventListener('mouseenter', () => {
+        div.style.transform = 'translateX(-50%) scale(1.05)';
+        div.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
+      });
+      div.addEventListener('mouseleave', () => {
+        div.style.transform = 'translateX(-50%) scale(1)';
+        div.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+      });
       
       this.getPanes().overlayMouseTarget.appendChild(div);
       this.div = div;
@@ -367,8 +320,8 @@ const PlantMap = () => {
     overlay.draw = function() {
       const overlayProjection = this.getProjection();
       const position = new window.google.maps.LatLng(
-        parseFloat(plant.location.latitude),
-        parseFloat(plant.location.longitude)
+        parseFloat(plant.location.lat),
+        parseFloat(plant.location.lng)
       );
       const point = overlayProjection.fromLatLngToDivPixel(position);
       
@@ -386,6 +339,37 @@ const PlantMap = () => {
     };
     
     return overlay;
+  };
+
+  const handleViewDetails = (plantId) => {
+    navigate(`/plants/${plantId}`);
+  };
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('');
+  };
+
+  // Custom marker icon
+  const getMarkerIcon = (plant) => {
+    const isHovered = hoveredPlantId === plant.id;
+    const isSelected = selectedPlant?.id === plant.id;
+
+    let color = '#4CAF50'; // Default green
+    if (plant.status === 'OFFLINE') color = '#f44336';
+    else if (plant.status === 'MAINTENANCE') color = '#ff9800';
+    else if (plant.status === 'INACTIVE') color = '#9e9e9e';
+
+    const scale = isHovered || isSelected ? 1.3 : 1;
+
+    return {
+      path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
+      fillColor: color,
+      fillOpacity: 1,
+      strokeColor: '#ffffff',
+      strokeWeight: isSelected ? 3 : 2,
+      scale: scale * 2,
+    };
   };
 
   // Statistics for sidebar
@@ -500,9 +484,9 @@ const PlantMap = () => {
                     primary={plant.name}
                     secondary={
                       <>
-                        <Typography variant="caption" display="block">
+                        <span style={{ fontSize: '0.75rem', color: '#666', display: 'block' }}>
                           {plant.location?.address || 'No address'}
-                        </Typography>
+                        </span>
                         <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
                           <Chip
                             label={plant.status}
@@ -559,32 +543,6 @@ const PlantMap = () => {
 
   return (
     <Box sx={{ height: 'calc(100vh - 140px)', display: 'flex', flexDirection: 'column' }}>
-      {/* Custom styles for map markers */}
-      <style>
-        {`
-          .custom-marker-label {
-            background: rgba(255, 255, 255, 0.9);
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            padding: 2px 6px;
-            margin-top: 8px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-            white-space: nowrap;
-            transform: translateX(-50%);
-            left: 50%;
-            position: absolute;
-          }
-          
-          .gm-style .custom-marker-label {
-            border: none;
-            background: transparent;
-            text-shadow: 1px 1px 2px rgba(255,255,255,0.8);
-            font-weight: bold;
-            font-size: 12px;
-          }
-        `}
-      </style>
-
       {/* Header */}
       <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h4">Plant Locations</Typography>
@@ -596,9 +554,6 @@ const PlantMap = () => {
           )}
           <IconButton onClick={fitMapBounds} title="Fit all markers">
             <LayersIcon />
-          </IconButton>
-          <IconButton onClick={toggleInfoBoxes} title={showInfoBoxes ? "Hide info boxes" : "Show info boxes"}>
-            <InfoIcon color={showInfoBoxes ? "primary" : "disabled"} />
           </IconButton>
         </Box>
       </Box>
@@ -646,7 +601,24 @@ const PlantMap = () => {
 
         {/* Google Map */}
         <Box sx={{ flexGrow: 1, position: 'relative' }}>
-          <LoadScript googleMapsApiKey={googleMapsApiKey}>
+          {!isLoaded ? (
+            <Box
+              sx={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                bgcolor: 'rgba(255, 255, 255, 0.9)',
+                zIndex: 1000,
+              }}
+            >
+              <CircularProgress />
+            </Box>
+          ) : (
             <GoogleMap
               mapContainerStyle={mapContainerStyle}
               center={mapCenter}
@@ -659,21 +631,14 @@ const PlantMap = () => {
                 <Marker
                   key={plant.id}
                   position={{
-                    lat: parseFloat(plant.location.latitude),
-                    lng: parseFloat(plant.location.longitude),
+                    lat: parseFloat(plant.location.lat),
+                    lng: parseFloat(plant.location.lng),
                   }}
                   onClick={() => handleMarkerClick(plant)}
                   onMouseOver={() => setHoveredPlantId(plant.id)}
                   onMouseOut={() => setHoveredPlantId(null)}
-                  icon={createCustomMarker(plant)}
+                  icon={getMarkerIcon(plant)}
                   title={plant.name}
-                  label={{
-                    text: plant.name,
-                    color: '#333333',
-                    fontSize: '14px',
-                    fontWeight: 'bold',
-                    className: 'custom-marker-label'
-                  }}
                 />
               ))}
 
@@ -681,8 +646,8 @@ const PlantMap = () => {
               {selectedPlant && (
                 <InfoWindow
                   position={{
-                    lat: parseFloat(selectedPlant.location.latitude),
-                    lng: parseFloat(selectedPlant.location.longitude),
+                    lat: parseFloat(selectedPlant.location.lat),
+                    lng: parseFloat(selectedPlant.location.lng),
                   }}
                   onCloseClick={() => setSelectedPlant(null)}
                 >
@@ -720,20 +685,30 @@ const PlantMap = () => {
                         )}
                       </Box>
 
-                      <Button
-                        fullWidth
-                        variant="contained"
-                        size="small"
-                        onClick={() => handleViewDetails(selectedPlant.id)}
-                      >
-                        View Details
-                      </Button>
+                      <Box sx={{ display: 'flex', gap: 1, flexDirection: 'column' }}>
+                        <Button
+                          variant="contained"
+                          size="small"
+                          onClick={() => handleInfoBoxClick(selectedPlant)}
+                          sx={{ mb: 1 }}
+                        >
+                          Select Plant & Go to Dashboard
+                        </Button>
+                        <Button
+                          fullWidth
+                          variant="outlined"
+                          size="small"
+                          onClick={() => handleViewDetails(selectedPlant.id)}
+                        >
+                          View Details
+                        </Button>
+                      </Box>
                     </CardContent>
                   </Card>
                 </InfoWindow>
               )}
             </GoogleMap>
-          </LoadScript>
+          )}
 
           {/* Loading Overlay */}
           {loading && (

@@ -18,11 +18,13 @@ import {
   Factory as PlantIcon,
   People as UserIcon,
   Assignment as UserPlantIcon,
+  AccountTree as HierarchyIcon,
 } from '@mui/icons-material';
 import { selectIsAdmin } from '../store/slices/authSlice';
 import Plants from './Plants';
 import Users from './Users';
 import UserPlantManagement from './UserPlantManagement';
+import HierarchyBuilder from './HierarchyBuilder';
 
 // Tab Panel Component
 function TabPanel({ children, value, index, ...other }) {
@@ -70,10 +72,17 @@ const Management = () => {
       },
       {
         index: 2,
-        label: 'User-Plant Access',
+        label: 'User Plant Map',
         icon: <UserPlantIcon />,
         adminOnly: true,
         component: <UserPlantManagement />
+      },
+      {
+        index: 3,
+        label: 'Plant Hierarchy',
+        icon: <HierarchyIcon />,
+        adminOnly: true,
+        component: <HierarchyBuilder />
       }
     ];
 
@@ -92,7 +101,7 @@ const Management = () => {
         </Typography>
         <Typography variant="body2" color="text.secondary">
           {isAdmin 
-            ? 'Manage plants, users, and user-plant assignments'
+            ? 'Manage plants, users, user plant mappings, and plant hierarchy'
             : 'Manage your assigned plants and view plant information'
           }
         </Typography>

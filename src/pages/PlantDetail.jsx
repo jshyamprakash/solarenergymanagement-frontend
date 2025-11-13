@@ -388,19 +388,24 @@ const PlantDetail = () => {
                             <strong>Parent:</strong> {device.parentDevice.name}
                           </Typography>
                         )}
-                        {device.tags && device.tags.length > 0 && (
-                          <Box sx={{ mt: 1 }}>
-                            {device.tags.map((tag) => (
-                              <Chip
-                                key={tag.id}
-                                label={tag.templateTag.displayName || tag.templateTag.tagName}
-                                size="small"
-                                variant="outlined"
-                                sx={{ mr: 0.5, mb: 0.5 }}
-                              />
-                            ))}
-                          </Box>
-                        )}
+                            {device.tags && device.tags.length > 0 && (
+                              <Box sx={{ mt: 1 }}>
+                                {device.tags.map((tag) => {
+                                  const templateTag = tag.templateTag;
+                                  if (!templateTag) return null;
+                                  
+                                  return (
+                                    <Chip
+                                      key={tag.id}
+                                      label={templateTag.displayName || templateTag.tagName}
+                                      size="small"
+                                      variant="outlined"
+                                      sx={{ mr: 0.5, mb: 0.5 }}
+                                    />
+                                  );
+                                })}
+                              </Box>
+                            )}
                       </Paper>
                     </Grid>
                   ))}
