@@ -55,6 +55,16 @@ const mapContainerStyle = {
   height: '100%',
 };
 
+// Add CSS animation for infobox fade-in
+const style = document.createElement('style');
+style.textContent = `
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
+`;
+document.head.appendChild(style);
+
 // Default center (India center coordinates as fallback)
 const defaultCenter = {
   lat: 20.5937,
@@ -88,6 +98,26 @@ const PlantMap = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const mapRef = useRef(null);
 
+  // Google Maps API key
+  const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+
+  // Check if API key is configured
+  if (!googleMapsApiKey || googleMapsApiKey === 'YOUR_GOOGLE_MAPS_API_KEY_HERE') {
+    return (
+      <Box>
+        <Typography variant="h4" gutterBottom>
+          Plant Locations
+        </Typography>
+        <Alert severity="error">
+          Google Maps API key is not configured. Please add your API key to .env file as VITE_GOOGLE_MAPS_API_KEY.
+        </Alert>
+    </Box>
+  );
+};
+
+export default PlantMap;
+  }
+
   // Redux selectors
   const plants = useSelector(selectPlants);
   const loading = useSelector(selectPlantsLoading);
@@ -106,9 +136,6 @@ const PlantMap = () => {
   const [hoveredPlantId, setHoveredPlantId] = useState(null);
   const [infoBoxOverlays, setInfoBoxOverlays] = useState(new Map());
   const [mapFullyLoaded, setMapFullyLoaded] = useState(false);
-
-  // Google Maps API key
-  const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
   // Use the new useJsApiLoader hook to check if Google Maps is loaded
   const { isLoaded } = useJsApiLoader({
@@ -154,22 +181,27 @@ const PlantMap = () => {
   // Manage info box overlays
   useEffect(() => {
     if (mapRef.current && filteredPlants.length > 0 && isLoaded && mapFullyLoaded) {
-      // Clear existing overlays
-      infoBoxOverlays.forEach((overlay) => {
-        overlay.setMap(null);
-      });
-      setInfoBoxOverlays(new Map());
+      // Add a small delay to ensure map is fully rendered
+      const timer = setTimeout(() => {
+        // Clear existing overlays
+        infoBoxOverlays.forEach((overlay) => {
+          overlay.setMap(null);
+        });
+        setInfoBoxOverlays(new Map());
 
-      // Create info box overlays for all plants
-      filteredPlants.forEach((plant) => {
-        if (plant.location?.lat && plant.location?.lng) {
-          const overlay = createInfoBoxOverlay(plant);
-          if (overlay) {
-            overlay.setMap(mapRef.current);
-            setInfoBoxOverlays(prev => new Map(prev).set(plant.id, overlay));
+        // Create info box overlays for all plants
+        filteredPlants.forEach((plant) => {
+          if (plant.location?.lat && plant.location?.lng) {
+            const overlay = createInfoBoxOverlay(plant);
+            if (overlay) {
+              overlay.setMap(mapRef.current);
+              setInfoBoxOverlays(prev => new Map(prev).set(plant.id, overlay));
+            }
           }
-        }
-      });
+        });
+      }, 100); // 100ms delay to ensure map is ready
+
+      return () => clearTimeout(timer);
     }
   }, [filteredPlants, isLoaded, mapFullyLoaded]);
 
@@ -180,7 +212,6 @@ const PlantMap = () => {
         overlay.setMap(null);
       });
       setInfoBoxOverlays(new Map());
-      setMapFullyLoaded(false);
     };
   }, []);
 
@@ -251,12 +282,43 @@ const PlantMap = () => {
 
   const handleMapLoad = useCallback((map) => {
     mapRef.current = map;
-
-    // Set map as fully loaded after a short delay to ensure it's ready for overlays
+    
+    // Set initial map center based on plants
+    if (filteredPlants.length > 0) {
+      const plantsWithLocation = filteredPlants.filter(
+        (plant) => plant.location?.lat && plant.location?.lng
+      );
+      
+      if (plantsWithLocation.length > 0) {
+        const meanLat = plantsWithLocation.reduce((sum, plant) => sum + parseFloat(plant.location.lat), 0) / plantsWithLocation.length;
+        const meanLng = plantsWithLocation.reduce((sum, plant) => sum + parseFloat(plant.location.lng), 0) / plantsWithLocation.length;
+        
+        setMapCenter({
+          lat: meanLat,
+          lng: meanLng,
+        });
+      }
+    } else {
+      // Set to default center if no plants
+      setMapCenter({
+        lat: defaultCenter.lat,
+        lng: defaultCenter.lng,
+      });
+      setMapZoom(5);
+    }
+    
+    // Force a re-render of overlays after map is fully loaded
     setTimeout(() => {
       setMapFullyLoaded(true);
+      if (filteredPlants.length > 0) {
+        // Trigger overlay recreation by briefly clearing and resetting
+        setInfoBoxOverlays(new Map());
+        setTimeout(() => {
+          // This will trigger useEffect to recreate overlays
+        }, 50);
+      }
     }, 200);
-  }, []);
+  }, [filteredPlants]);
 
   const handleMarkerClick = (plant) => {
     setSelectedPlant(plant);
@@ -286,7 +348,9 @@ const PlantMap = () => {
 
   // Create info box overlay for a plant
   const createInfoBoxOverlay = (plant) => {
-    if (!mapRef.current || !window.google || !window.google.maps) return null;
+    if (!mapRef.current || !window.google || !window.google.maps) {
+      return null;
+    }
 
     const overlay = new window.google.maps.OverlayView();
     
@@ -308,6 +372,8 @@ const PlantMap = () => {
         position: absolute;
         cursor: pointer;
         transition: all 0.2s ease;
+        opacity: 0;
+        animation: fadeIn 0.3s ease-in-out forwards;
       `;
       
       // Show only short plant name or plant ID
@@ -330,8 +396,20 @@ const PlantMap = () => {
         div.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
       });
       
-      this.getPanes().overlayMouseTarget.appendChild(div);
-      this.div = div;
+      // Ensure the pane is available before appending
+      const panes = this.getPanes();
+      
+      if (panes && panes.overlayMouseTarget) {
+        panes.overlayMouseTarget.appendChild(div);
+        this.div = div;
+        
+        // Trigger a reflow to ensure animation plays
+        setTimeout(() => {
+          if (this.div) {
+            this.div.style.opacity = '1';
+          }
+        }, 50);
+      }
     };
     
     overlay.draw = function() {
@@ -349,7 +427,31 @@ const PlantMap = () => {
     };
     
     overlay.onRemove = function() {
+      if (this.div && this.div.parentNode) {
+        this.div.parentNode.removeChild(this.div);
+        this.div = null;
+      }
+    };
+    
+    return overlay;
+  };
+    
+    overlay.draw = function() {
+      const overlayProjection = this.getProjection();
+      const position = new window.google.maps.LatLng(
+        parseFloat(plant.location.lat),
+        parseFloat(plant.location.lng)
+      );
+      const point = overlayProjection.fromLatLngToDivPixel(position);
+      
       if (this.div) {
+        this.div.style.left = point.x + 'px';
+        this.div.style.top = (point.y - 60) + 'px';
+      }
+    };
+    
+    overlay.onRemove = function() {
+      if (this.div && this.div.parentNode) {
         this.div.parentNode.removeChild(this.div);
         this.div = null;
       }
@@ -544,20 +646,6 @@ const PlantMap = () => {
     </Box>
   );
 
-  // Check if API key is configured
-  if (!googleMapsApiKey || googleMapsApiKey === 'YOUR_GOOGLE_MAPS_API_KEY_HERE') {
-    return (
-      <Box>
-        <Typography variant="h4" gutterBottom>
-          Plant Locations
-        </Typography>
-        <Alert severity="error">
-          Google Maps API key is not configured. Please add your API key to the .env file as VITE_GOOGLE_MAPS_API_KEY.
-        </Alert>
-      </Box>
-    );
-  }
-
   return (
     <Box sx={{ height: 'calc(100vh - 140px)', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
@@ -575,48 +663,11 @@ const PlantMap = () => {
         </Box>
       </Box>
 
-      {/* Error Alert */}
-      {reduxError && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          {reduxError}
-        </Alert>
-      )}
+      <Box sx={{ flexGrow: 1, display: 'flex', overflow: 'hidden' }}>
+        {/* Sidebar */}
+        {drawerOpen && renderSidebar()}
 
-      {/* No location data warning */}
-      {!loading && plants.length > 0 && filteredPlants.length === 0 && !statusFilter && !searchQuery && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          No plants with location data found. Please add location coordinates to plants.
-        </Alert>
-      )}
-
-      {/* Map Container */}
-      <Box sx={{ flexGrow: 1, display: 'flex', position: 'relative', borderRadius: 1, overflow: 'hidden' }}>
-        {/* Sidebar Drawer */}
-        {isMobile ? (
-          <Drawer
-            anchor="left"
-            open={drawerOpen}
-            onClose={() => setDrawerOpen(false)}
-            variant="temporary"
-          >
-            {renderSidebar()}
-          </Drawer>
-        ) : (
-          <Box
-            sx={{
-              width: drawerOpen ? 320 : 0,
-              transition: 'width 0.3s',
-              overflow: 'hidden',
-              borderRight: drawerOpen ? 1 : 0,
-              borderColor: 'divider',
-              bgcolor: 'background.paper',
-            }}
-          >
-            {renderSidebar()}
-          </Box>
-        )}
-
-        {/* Google Map */}
+        {/* Map Container */}
         <Box sx={{ flexGrow: 1, position: 'relative' }}>
           {!isLoaded ? (
             <Box
@@ -750,6 +801,5 @@ const PlantMap = () => {
       </Box>
     </Box>
   );
-};
 
-export default PlantMap;
+  return (

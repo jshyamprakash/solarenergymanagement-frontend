@@ -22,7 +22,6 @@ import {
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
-  Edit as EditIcon,
   LocationOn as LocationIcon,
   Bolt as BoltIcon,
   DeviceHub as DeviceIcon,
@@ -166,15 +165,6 @@ const PlantDetail = () => {
             sx={{ mt: 1 }}
           />
         </Box>
-        {canModify && (
-          <Button
-            variant="contained"
-            startIcon={<EditIcon />}
-            onClick={() => navigate(`/plants/${id}/edit`)}
-          >
-            Edit Plant
-          </Button>
-        )}
       </Box>
 
       {/* Statistics Cards */}
